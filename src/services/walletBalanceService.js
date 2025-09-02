@@ -345,6 +345,12 @@ class WalletBalanceService {
     const balances = [];
     const lines = metricsText.split('\n');
     
+    logger.debug(`Parsing ${lines.length} lines from metrics response`);
+    
+    // Find wallet_balance lines for debugging
+    const walletBalanceLines = lines.filter(line => line.includes('wallet_balance{'));
+    logger.debug(`Found ${walletBalanceLines.length} wallet_balance lines`);
+    
     for (const line of lines) {
       // Parse wallet_balance metrics
       const walletBalanceMatch = line.match(/^wallet_balance\{account="([^"]+)",chain="([^"]+)",denom="([^"]+)",otel_scope_name="([^"]+)"\}\s+(\d+(?:\.\d+)?)/);
@@ -360,9 +366,12 @@ class WalletBalanceService {
           scope,
           timestamp: new Date().toISOString()
         });
+        
+        logger.debug(`Parsed balance: ${chain} - ${denom}: ${value}`);
       }
     }
 
+    logger.debug(`Successfully parsed ${balances.length} wallet balances`);
     return balances;
   }
 
