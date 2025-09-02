@@ -26,6 +26,7 @@ class WalletBalanceService {
     }
 
     this.isRunning = true;
+    this.startTime = Date.now();
     logger.info('Starting wallet balance service...');
 
     // Initial collection
@@ -112,8 +113,20 @@ class WalletBalanceService {
         this.errorCount++;
         this.lastFailureTime = Date.now();
         
+        // Enhanced error logging with more context
+        const errorContext = {
+          message: error.message,
+          code: error.code,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          url: this.metricsEndpoint,
+          timeout: this.requestTimeout,
+          attempt: retryCount,
+          maxRetries: this.maxRetries + 1
+        };
+        
         logger.error(`Error collecting wallet balances (attempt ${retryCount}/${this.maxRetries + 1}):`, error.message);
-        logger.debug('Error details:', error);
+        logger.error('Error context:', errorContext);
         
         if (retryCount <= this.maxRetries) {
           const backoffTime = Math.min(
@@ -127,16 +140,54 @@ class WalletBalanceService {
     }
 
     logger.error('Failed to collect wallet balances after all retries');
+    
+    // Log final error summary for troubleshooting
+    logger.error('Final error summary:', {
+      totalAttempts: this.maxRetries + 1,
+      errorCount: this.errorCount,
+      lastFailureTime: new Date(this.lastFailureTime).toISOString(),
+      metricsEndpoint: this.metricsEndpoint,
+      requestTimeout: this.requestTimeout,
+      circuitBreakerOpen: this.isCircuitBreakerOpen()
+    });
+    
     return [];
   }
 
   async fetchWalletBalanceMetricsWithRetry() {
-    try {
-      return await this.fetchWalletBalanceMetrics();
-    } catch (error) {
-      // If metrics endpoint fails, we could implement fallback logic here
-      throw error;
+    let lastError;
+    
+    // Try with different timeout strategies if needed
+    const timeoutStrategies = [this.requestTimeout, this.requestTimeout * 2, this.requestTimeout * 3];
+    
+    for (let i = 0; i < timeoutStrategies.length; i++) {
+      try {
+        const originalTimeout = this.requestTimeout;
+        this.requestTimeout = timeoutStrategies[i];
+        
+        logger.debug(`Attempting to fetch metrics with timeout: ${this.requestTimeout}ms`);
+        const result = await this.fetchWalletBalanceMetrics();
+        
+        // Restore original timeout on success
+        this.requestTimeout = originalTimeout;
+        return result;
+        
+      } catch (error) {
+        lastError = error;
+        logger.debug(`Fetch attempt ${i + 1} failed with timeout ${timeoutStrategies[i]}ms:`, error.message);
+        
+        // Restore original timeout before next attempt
+        this.requestTimeout = timeoutStrategies[0];
+        
+        // Don't wait between timeout strategy attempts if this is the last one
+        if (i < timeoutStrategies.length - 1) {
+          await this.sleep(500); // Short delay between timeout strategies
+        }
+      }
     }
+    
+    // If all timeout strategies fail, throw the last error
+    throw lastError;
   }
 
   resetErrorCount() {
@@ -161,9 +212,19 @@ class WalletBalanceService {
         headers: {
           'User-Agent': 'IBC-Monitor-WalletBalance/1.0',
           'Accept': 'text/plain',
-          'Connection': 'keep-alive'
+          'Connection': 'keep-alive',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
         },
-        validateStatus: (status) => status === 200
+        validateStatus: (status) => status === 200,
+        maxRedirects: 3,
+        // Increase socket timeout for slow networks
+        httpsAgent: process.env.NODE_ENV === 'production' ? undefined : null,
+        // Retry on network errors
+        retry: 0, // Handled at higher level
+        // Connection pooling settings
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity
       });
 
       clearTimeout(timeoutId);
@@ -634,11 +695,40 @@ class WalletBalanceService {
       status: isHealthy ? 'healthy' : 'unhealthy',
       lastSuccessfulFetch: this.lastSuccessfulFetch,
       errorCount: this.errorCount,
+      lastFailureTime: this.lastFailureTime ? new Date(this.lastFailureTime).toISOString() : null,
       cacheSize: this.cosmosDirectoryCache.size,
       isRunning: this.isRunning,
       metricsEndpoint: this.metricsEndpoint,
-      refreshInterval: this.refreshInterval
+      refreshInterval: this.refreshInterval,
+      circuitBreakerOpen: this.isCircuitBreakerOpen(),
+      requestTimeout: this.requestTimeout,
+      uptime: this.isRunning ? Math.round((now - (this.startTime || now)) / 1000) : 0
     };
+  }
+
+  async testConnectivity() {
+    try {
+      logger.info('Testing wallet balance service connectivity...');
+      const startTime = Date.now();
+      
+      const balances = await this.fetchWalletBalanceMetrics();
+      const duration = Date.now() - startTime;
+      
+      logger.info(`✅ Connectivity test passed: ${balances.length} wallet balances found in ${duration}ms`);
+      return {
+        success: true,
+        balanceCount: balances.length,
+        responseTime: duration,
+        endpoint: this.metricsEndpoint
+      };
+    } catch (error) {
+      logger.error('❌ Connectivity test failed:', error.message);
+      return {
+        success: false,
+        error: error.message,
+        endpoint: this.metricsEndpoint
+      };
+    }
   }
 }
 
