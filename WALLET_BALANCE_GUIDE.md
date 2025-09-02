@@ -2,7 +2,16 @@
 
 ## Overview
 
-The Wallet Balance Service fetches wallet balance data from Hermes metrics endpoint at `http://localhost:4001/metrics` and converts raw values to human-readable format using proper decimal conversion based on each blockchain's specifications.
+The Wallet Balance Service is a comprehensive monitoring system that collects wallet balance data from Hermes relayer metrics and provides both real-time collection and database-backed API endpoints. The service has been enhanced with robust error handling, graceful startup procedures, and reliable data persistence.
+
+## Recent Updates (September 2025)
+
+✅ **Fixed Connection Issues**: Resolved "Connection refused" errors with IPv4-forced connections and dedicated HTTP agents  
+✅ **Database Integration**: Added automatic database table creation and proper error handling  
+✅ **Graceful Startup**: Service now waits for metrics endpoint to be ready before initialization  
+✅ **API Optimization**: Endpoints now serve data from database for better performance and reliability  
+✅ **Enhanced Logging**: Detailed debug logging for troubleshooting connection and parsing issues  
+✅ **Concurrency Protection**: Prevents multiple simultaneous collection processes
 
 ## Features
 
@@ -18,11 +27,13 @@ The Wallet Balance Service fetches wallet balance data from Hermes metrics endpo
 
 ## API Endpoints
 
-### Get Live Chains from Metrics
+**Note**: All API endpoints have been optimized to serve data from database instead of live metrics collection for better performance and reliability.
+
+### Get Live Chains from Database
 ```
 GET /api/wallets/balances/live-chains
 ```
-Returns only chains that have active wallet balances in the metrics endpoint.
+Returns chains that have active wallet balances stored in the database. Data is automatically updated by the background wallet balance service.
 
 Response:
 ```json
@@ -45,12 +56,12 @@ Response:
 }
 ```
 
-### Get Formatted Wallet Balances (Live Data Only)
+### Get Formatted Wallet Balances from Database
 ```
 GET /api/wallets/balances/formatted?chainId=osmosis-1
 ```
 
-Response shows only chains present in metrics endpoint:
+Returns formatted wallet balance data from database. Data is kept up-to-date by the background collection service.
 ```json
 {
   "success": true,
@@ -105,8 +116,10 @@ Response:
 ## Configuration
 
 Environment variables:
-- `METRICS_ENDPOINT`: Hermes metrics endpoint (default: http://localhost:4001/metrics)
+- `METRICS_ENDPOINT`: Hermes metrics endpoint (default: http://127.0.0.1:4001/metrics)
 - `WALLET_BALANCE_REFRESH_INTERVAL`: Refresh interval in seconds (default: 30)
+
+**Important**: The endpoint now uses `127.0.0.1` instead of `localhost` to force IPv4 connections and avoid DNS resolution issues.
 
 ## Token Decimals Support
 
@@ -178,11 +191,73 @@ Raw: 12261010
 ✅ **Real-time Data**: Direct from metrics endpoint  
 ✅ **Clean Interface**: No USD prices, focus on balance amounts
 
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### "Connection refused" Errors
+**Symptoms**: `Error collecting wallet balances: Connection refused - metrics endpoint may be down`
+
+**Solutions**:
+1. Verify Hermes is running: `curl http://127.0.0.1:4001/metrics`
+2. Check if port 4001 is accessible: `nc -z 127.0.0.1 4001`
+3. Restart the IBC monitor application
+4. Ensure `METRICS_ENDPOINT` uses `127.0.0.1` not `localhost`
+
+#### "No wallet balance metrics found" Warning
+**Symptoms**: Service connects but finds no wallet balance data
+
+**Solutions**:
+1. Check Hermes configuration includes wallet balance metrics
+2. Verify Hermes relayer wallets have transactions/activity
+3. Check metrics endpoint manually: `curl http://127.0.0.1:4001/metrics | grep wallet_balance`
+
+#### Database Table Errors
+**Symptoms**: `SQLITE_ERROR: no such table: token_decimals`
+
+**Solutions**:
+1. Database tables are now auto-created on service startup
+2. Restart the application to trigger table creation
+3. Check database permissions and disk space
+
+#### Empty Dashboard Display
+**Symptoms**: UI shows "Total: 0 wallets across 0 chains"
+
+**Solutions**:
+1. Check if wallet balance service is running: Look for "✅ Metrics endpoint is ready" in logs
+2. Verify API endpoints return data (check browser developer tools Network tab)
+3. Check database has wallet balance data: `sqlite3 database/ibc_monitor.db "SELECT * FROM wallet_balances;"`
+
+### Service Startup Sequence
+
+The service now follows a graceful startup process:
+
+1. **Database Tables Initialization** - Creates required tables
+2. **Metrics Endpoint Check** - Waits up to 30 seconds for Hermes to be ready
+3. **Initial Collection** - Collects and processes wallet balance data
+4. **Periodic Updates** - Sets up interval-based collection
+
+### Debug Logging
+
+Enable debug logging to troubleshoot issues:
+```bash
+# In .env file
+LOG_LEVEL=debug
+```
+
+Debug logs will show:
+- Metrics endpoint connectivity tests
+- Database table creation status
+- Number of wallet balances found and processed
+- API endpoint data retrieval details
+
 ## Monitoring
 
 The service provides comprehensive health monitoring:
-- Error count tracking
+- Error count tracking with automatic reset
 - Last successful fetch timestamp
 - Cache utilization metrics
-- Circuit breaker status
+- Circuit breaker status with automatic recovery
 - Service availability status
+- Graceful startup process monitoring
+- Database connectivity verification

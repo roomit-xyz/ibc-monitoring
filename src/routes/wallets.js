@@ -205,17 +205,19 @@ router.get('/balances/formatted', async (req, res) => {
     }
     
     // Transform database results to expected format
-    const formattedBalances = walletBalances.map(wb => ({
-      account: wb.address,
-      chain: wb.chain_id,
-      chainName: wb.chain_name,
-      denom: wb.denom,
-      symbol: wb.denom.replace('u', '').toUpperCase(),
-      rawBalance: wb.raw_balance || (wb.balance * Math.pow(10, 6)).toString(), // Estimate raw from formatted
-      balance: parseFloat(wb.balance),
-      decimals: 6, // Default decimals
-      timestamp: wb.updated_at || new Date().toISOString()
-    }));
+    const formattedBalances = walletBalances
+      .filter(wb => wb.denom && wb.balance) // Filter out null denom or balance
+      .map(wb => ({
+        account: wb.address,
+        chain: wb.chain_id,
+        chainName: wb.chain_name,
+        denom: wb.denom,
+        symbol: wb.denom ? wb.denom.replace('u', '').toUpperCase() : 'UNKNOWN',
+        rawBalance: wb.raw_balance || (wb.balance * Math.pow(10, 6)).toString(), // Estimate raw from formatted
+        balance: parseFloat(wb.balance) || 0,
+        decimals: 6, // Default decimals
+        timestamp: wb.updated_at || new Date().toISOString()
+      }));
     
     logger.debug(`Formatted ${formattedBalances.length} balances from database`);
     if (formattedBalances.length > 0) {
@@ -256,8 +258,9 @@ router.get('/balances/formatted', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    logger.error('Get formatted wallet balances error:', error);
-    res.status(500).json({ error: 'Failed to retrieve formatted wallet balances' });
+    logger.error('Get formatted wallet balances error:', error.message);
+    logger.error('Error stack:', error.stack);
+    res.status(500).json({ error: 'Failed to retrieve formatted wallet balances', details: error.message });
   }
 });
 
