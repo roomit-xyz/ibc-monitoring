@@ -19,6 +19,9 @@ class WalletMonitor {
     this.isRunning = true;
     logger.info('Starting wallet balance monitoring service...');
 
+    // Initialize database tables first
+    await this.initializeDatabaseTables();
+
     // Initial collection
     await this.collectAllBalances();
 
@@ -41,6 +44,42 @@ class WalletMonitor {
     }
     this.isRunning = false;
     logger.info('Wallet balance monitoring service stopped');
+  }
+
+  async initializeDatabaseTables() {
+    try {
+      if (!this.db || !this.db.run) {
+        logger.warn('Database not available, skipping table initialization in wallet monitor');
+        return false;
+      }
+
+      logger.info('Initializing database tables for wallet monitor...');
+      
+      // Create token_decimals table (same as walletBalanceService)
+      await this.db.run(`
+        CREATE TABLE IF NOT EXISTS token_decimals (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          chain_id TEXT NOT NULL,
+          denom TEXT NOT NULL,
+          decimals INTEGER NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(chain_id, denom)
+        )
+      `);
+      
+      logger.info('✅ token_decimals table created/verified in wallet monitor');
+      
+      // Test table access
+      const testQuery = await this.db.get(`SELECT COUNT(*) as count FROM token_decimals`);
+      logger.debug(`token_decimals table accessible with ${testQuery.count} records`);
+      
+      return true;
+      
+    } catch (error) {
+      logger.error('❌ Failed to initialize database tables in wallet monitor:', error.message);
+      return false;
+    }
   }
 
   async collectFromMetricsEndpoint() {
