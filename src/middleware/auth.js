@@ -163,12 +163,12 @@ const authenticateWithLDAP = async (username, password) => {
 
           searchRes.on('searchEntry', (entry) => {
             userDN = entry.dn.toString();
-            userAttributes = entry.object;
+            userAttributes = entry.object || {};
             logger.debug('LDAP user found:', { 
               dn: userDN, 
-              attributes: Object.keys(userAttributes),
-              uid: userAttributes.uid,
-              mail: userAttributes.mail
+              attributes: Object.keys(userAttributes || {}),
+              uid: userAttributes?.uid,
+              mail: userAttributes?.mail
             });
           });
 
@@ -201,7 +201,7 @@ const authenticateWithLDAP = async (username, password) => {
 
               try {
                 // Determine user role based on LDAP group membership
-                const userRole = await determineUserRoleFromGroups(client, userDN, userAttributes);
+                const userRole = await determineUserRoleFromGroups(client, userDN, userAttributes || {});
                 
                 if (!userRole) {
                   userClient.unbind();
@@ -270,6 +270,9 @@ const authenticateWithLDAP = async (username, password) => {
 const determineUserRoleFromGroups = (client, userDN, userAttributes) => {
   return new Promise((resolve) => {
     try {
+      // Ensure userAttributes is defined
+      userAttributes = userAttributes || {};
+      
       const adminGroups = process.env.LDAP_ADMIN_GROUPS?.split(',') || ['cn=lldap_admin,ou=groups,dc=roomit,dc=xyz'];
       const monitoringGroups = process.env.LDAP_MONITORING_GROUPS?.split(',') || ['cn=lldap_web_admin,ou=groups,dc=roomit,dc=xyz'];
       
