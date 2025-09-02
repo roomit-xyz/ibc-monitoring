@@ -5,7 +5,8 @@ class WalletBalanceService {
   constructor(database, websocketService) {
     this.db = database;
     this.ws = websocketService;
-    this.metricsEndpoint = process.env.METRICS_ENDPOINT || 'http://localhost:4001/metrics';
+    // Force IPv4 to avoid DNS resolution issues
+    this.metricsEndpoint = process.env.METRICS_ENDPOINT || 'http://127.0.0.1:4001/metrics';
     this.cosmosDirectoryCache = new Map();
     this.cacheExpiry = 24 * 60 * 60 * 1000; // 24 hours
     this.isRunning = false;
@@ -18,6 +19,14 @@ class WalletBalanceService {
     this.requestTimeout = 10000; // 10 seconds
     this.rateLimitDelay = 1000; // 1 second between API calls
     this.isCollecting = false; // Prevent concurrent collections
+    
+    // Create dedicated HTTP agent to avoid connection pooling issues
+    const http = require('http');
+    this.httpAgent = new http.Agent({
+      keepAlive: false,
+      maxSockets: 1,
+      family: 4 // Force IPv4
+    });
   }
 
   async start() {
@@ -29,6 +38,9 @@ class WalletBalanceService {
     this.isRunning = true;
     this.startTime = Date.now();
     logger.info('Starting wallet balance service...');
+
+    // Initialize database tables first
+    await this.initializeDatabaseTables();
 
     // Wait for metrics endpoint to be ready (graceful startup)
     const isReady = await this.waitForMetricsEndpoint();
@@ -64,6 +76,32 @@ class WalletBalanceService {
     logger.info('Wallet balance service stopped');
   }
 
+  async initializeDatabaseTables() {
+    try {
+      if (!this.db || !this.db.run) {
+        logger.debug('Database not available, skipping table initialization');
+        return;
+      }
+
+      // Create token_decimals table
+      await this.db.run(`
+        CREATE TABLE IF NOT EXISTS token_decimals (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          chain_id TEXT NOT NULL,
+          denom TEXT NOT NULL,
+          decimals INTEGER NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(chain_id, denom)
+        )
+      `);
+
+      logger.debug('Database tables initialized for wallet balance service');
+    } catch (error) {
+      logger.debug('Error initializing database tables:', error.message);
+    }
+  }
+
   async waitForMetricsEndpoint(maxWaitTime = 30000, checkInterval = 2000) {
     logger.info(`Waiting for metrics endpoint to be ready: ${this.metricsEndpoint}`);
     const startTime = Date.now();
@@ -73,7 +111,8 @@ class WalletBalanceService {
         const axios = require('axios');
         await axios.get(this.metricsEndpoint, {
           timeout: 5000,
-          validateStatus: (status) => status === 200
+          validateStatus: (status) => status === 200,
+          httpAgent: this.httpAgent
         });
         
         logger.info('✅ Metrics endpoint is ready');
@@ -260,17 +299,12 @@ class WalletBalanceService {
         headers: {
           'User-Agent': 'IBC-Monitor-WalletBalance/1.0',
           'Accept': 'text/plain',
-          'Connection': 'keep-alive',
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
         },
         validateStatus: (status) => status === 200,
         maxRedirects: 3,
-        // Increase socket timeout for slow networks
-        httpsAgent: process.env.NODE_ENV === 'production' ? undefined : null,
-        // Retry on network errors
-        retry: 0, // Handled at higher level
-        // Connection pooling settings
+        httpAgent: this.httpAgent,
         maxContentLength: Infinity,
         maxBodyLength: Infinity
       });
@@ -427,13 +461,17 @@ class WalletBalanceService {
 
   async getDecimalsFromDatabase(chainId, denom) {
     try {
-      if (!this.db || !this.db.getTokenDecimals) {
+      if (!this.db || !this.db.get) {
         logger.debug('Database not available for decimals lookup');
         return null;
       }
 
-      const decimals = await this.db.getTokenDecimals(chainId, denom);
-      return decimals;
+      const result = await this.db.get(`
+        SELECT decimals FROM token_decimals 
+        WHERE chain_id = ? AND denom = ?
+      `, [chainId, denom]);
+      
+      return result ? result.decimals : null;
     } catch (error) {
       logger.debug('Error getting decimals from database:', error.message);
       return null;
