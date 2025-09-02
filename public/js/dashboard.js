@@ -538,27 +538,55 @@ class IBCDashboard {
         }
     }
 
-    // Wallet Balance Methods
+    // Wallet Balance Methods - Updated to use live metrics data
     async loadWalletBalances() {
         try {
             document.getElementById('walletLoading').classList.remove('hidden');
 
-            const response = await fetch('/api/wallets/summary', {
+            // Get live chains from metrics endpoint
+            const chainsResponse = await fetch('/api/wallets/balances/live-chains', {
                 headers: {
                     'Authorization': `Bearer ${this.token}`
                 },
                 credentials: 'include'
             });
 
-            if (response.ok) {
-                const data = await response.json();
-                this.walletData = data.summary;
-                this.updateWalletDisplay();
+            if (chainsResponse.ok) {
+                const chainsData = await chainsResponse.json();
+                this.liveChains = chainsData.chains;
                 
-                // Also load detailed balances
-                await this.loadDetailedBalances();
+                // Get formatted balances (live data)
+                const balancesResponse = await fetch('/api/wallets/balances/formatted', {
+                    headers: {
+                        'Authorization': `Bearer ${this.token}`
+                    },
+                    credentials: 'include'
+                });
+
+                if (balancesResponse.ok) {
+                    const balancesData = await balancesResponse.json();
+                    this.detailedBalances = balancesData.chains;
+                    
+                    // Transform data for wallet display
+                    this.walletData = {
+                        total_chains: balancesData.totalChains,
+                        total_wallets: balancesData.totalWallets,
+                        total_usd_value: 0, // No USD values anymore
+                        chains: balancesData.chains.map(chain => ({
+                            chain_id: chain.chain,
+                            chain_name: chain.chainName,
+                            wallet_count: chain.wallets.length,
+                            token_count: chain.wallets.reduce((total, wallet) => total + 1, 0), // Count unique tokens
+                            total_usd_value: 0 // No USD values
+                        }))
+                    };
+                    
+                    this.updateWalletDisplay();
+                } else {
+                    throw new Error('Failed to load wallet balances');
+                }
             } else {
-                throw new Error('Failed to load wallet summary');
+                throw new Error('Failed to load live chains');
             }
 
         } catch (error) {
@@ -569,31 +597,13 @@ class IBCDashboard {
         }
     }
 
-    async loadDetailedBalances() {
-        try {
-            const response = await fetch('/api/wallets/balances', {
-                headers: {
-                    'Authorization': `Bearer ${this.token}`
-                },
-                credentials: 'include'
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                this.detailedBalances = data.balances;
-            }
-
-        } catch (error) {
-            console.error('Failed to load detailed balances:', error);
-        }
-    }
+    // Removed loadDetailedBalances - now using live metrics data
 
     updateWalletDisplay() {
         if (!this.walletData) return;
 
-        // Update total portfolio value
-        const totalValue = this.walletData.total_usd_value || 0;
-        document.getElementById('totalPortfolioValue').textContent = `Total: $${totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        // Update total counts (no USD values)
+        document.getElementById('totalPortfolioValue').textContent = `Total: ${this.walletData.total_wallets} wallets across ${this.walletData.total_chains} chains`;
 
         // Update summary cards
         const summaryContainer = document.getElementById('walletSummaryCards');
@@ -614,9 +624,9 @@ class IBCDashboard {
         const card = document.createElement('div');
         card.className = 'bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200';
         
-        const totalValue = chain.total_usd_value || 0;
-        const statusColor = totalValue < 10 ? 'text-red-600' : totalValue < 50 ? 'text-yellow-600' : 'text-green-600';
-        const statusIcon = totalValue < 10 ? '🔴' : totalValue < 50 ? '🟡' : '🟢';
+        // Show active status since we only show chains with balances
+        const statusColor = 'text-green-600';
+        const statusIcon = '🟢';
 
         card.innerHTML = `
             <div class="flex items-center justify-between mb-2">
@@ -625,16 +635,16 @@ class IBCDashboard {
             </div>
             <div class="space-y-1">
                 <div class="flex justify-between items-center">
-                    <span class="text-sm text-gray-600">Value:</span>
-                    <span class="font-medium ${statusColor}">$${totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    <span class="text-sm text-gray-600">Chain ID:</span>
+                    <span class="text-xs font-mono text-gray-700">${this.escapeHtml(chain.chain_id)}</span>
                 </div>
                 <div class="flex justify-between items-center">
                     <span class="text-sm text-gray-600">Wallets:</span>
-                    <span class="text-sm text-gray-700">${chain.wallet_count}</span>
+                    <span class="text-sm font-medium text-blue-600">${chain.wallet_count}</span>
                 </div>
                 <div class="flex justify-between items-center">
-                    <span class="text-sm text-gray-600">Tokens:</span>
-                    <span class="text-sm text-gray-700">${chain.token_count}</span>
+                    <span class="text-sm text-gray-600">Status:</span>
+                    <span class="text-sm text-green-600">Active in Metrics</span>
                 </div>
             </div>
         `;
@@ -659,51 +669,46 @@ class IBCDashboard {
         section.className = 'bg-gray-50 rounded-lg p-4 border';
 
         let walletsHtml = '';
-        let totalChainValue = 0;
 
         chain.wallets.forEach(wallet => {
-            if (wallet.tokens && wallet.tokens.length > 0) {
-                totalChainValue += wallet.total_usd;
-                
-                const tokensHtml = wallet.tokens.map(token => `
-                    <div class="flex justify-between items-center py-1">
-                        <div class="flex items-center">
-                            <span class="text-sm font-mono text-gray-600">${this.escapeHtml(token.symbol || token.denom)}</span>
-                            <span class="ml-2 text-xs text-gray-400">${token.last_updated ? new Date(token.last_updated).toLocaleTimeString() : ''}</span>
+            const tokensHtml = `
+                <div class="flex justify-between items-center py-1">
+                    <div class="flex items-center">
+                        <span class="text-sm font-mono text-gray-600">${this.escapeHtml(wallet.symbol || wallet.denom)}</span>
+                        <span class="ml-2 text-xs text-gray-400">${wallet.timestamp ? new Date(wallet.timestamp).toLocaleTimeString() : ''}</span>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-sm font-medium">${wallet.balance.toLocaleString('en-US', {maximumFractionDigits: 6})}</div>
+                        <div class="text-xs text-gray-500">Raw: ${wallet.rawBalance}</div>
+                    </div>
+                </div>
+            `;
+
+            walletsHtml += `
+                <div class="bg-white rounded p-3 border-l-4 border-green-400">
+                    <div class="flex justify-between items-center mb-2">
+                        <div>
+                            <div class="text-sm font-medium text-gray-900">Relayer Wallet</div>
+                            <div class="text-xs font-mono text-gray-500">${wallet.address.substring(0, 16)}...${wallet.address.substring(wallet.address.length - 8)}</div>
                         </div>
                         <div class="text-right">
-                            <div class="text-sm font-medium">${token.balance.toLocaleString('en-US', {maximumFractionDigits: 6})}</div>
-                            <div class="text-xs text-gray-500">$${token.balance_usd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                            <div class="text-sm font-bold text-green-600">
+                                ${wallet.balance.toLocaleString('en-US', {maximumFractionDigits: 6})} ${this.escapeHtml(wallet.symbol)}
+                            </div>
+                            <div class="text-xs text-gray-500">Decimals: ${wallet.decimals}</div>
                         </div>
                     </div>
-                `).join('');
-
-                walletsHtml += `
-                    <div class="bg-white rounded p-3 border-l-4 ${wallet.total_usd < 10 ? 'border-red-400' : wallet.total_usd < 50 ? 'border-yellow-400' : 'border-green-400'}">
-                        <div class="flex justify-between items-center mb-2">
-                            <div>
-                                <div class="text-sm font-medium text-gray-900">${wallet.address_type.charAt(0).toUpperCase() + wallet.address_type.slice(1)} Wallet</div>
-                                <div class="text-xs font-mono text-gray-500">${wallet.address.substring(0, 16)}...${wallet.address.substring(wallet.address.length - 8)}</div>
-                            </div>
-                            <div class="text-right">
-                                <div class="text-sm font-bold ${wallet.total_usd < 10 ? 'text-red-600' : wallet.total_usd < 50 ? 'text-yellow-600' : 'text-green-600'}">
-                                    $${wallet.total_usd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                </div>
-                                <div class="text-xs text-gray-500">${wallet.tokens.length} tokens</div>
-                            </div>
-                        </div>
-                        <div class="space-y-1">
-                            ${tokensHtml}
-                        </div>
+                    <div class="space-y-1">
+                        ${tokensHtml}
                     </div>
-                `;
-            }
+                </div>
+            `;
         });
 
         section.innerHTML = `
             <div class="flex justify-between items-center mb-3">
-                <h4 class="font-semibold text-gray-900">${this.escapeHtml(chain.chain_name)}</h4>
-                <span class="font-bold text-blue-600">$${totalChainValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                <h4 class="font-semibold text-gray-900">${this.escapeHtml(chain.chainName)} (${this.escapeHtml(chain.chain)})</h4>
+                <span class="font-bold text-blue-600">${chain.wallets.length} wallet(s)</span>
             </div>
             <div class="space-y-2">
                 ${walletsHtml}

@@ -146,6 +146,38 @@ Subscribe to `wallet_balances_update` events for real-time balance updates:
 - **Connection Pooling**: Keep-alive HTTP connections
 - **Memory Efficiency**: Removed price caching and token info fetching
 
+## UI Display Format
+
+The updated UI now shows only live chains from metrics with human-readable balances:
+
+### Summary Cards Display:
+```
+Chain: atomone-1 🟢
+Chain ID: atomone-1
+Wallets: 1
+Status: Active in Metrics
+```
+
+### Detailed Balance Display:
+```
+atomone-1 (atomone-1) | 1 wallet(s)
+
+Relayer Wallet
+atone16zv6x...z726ex9
+12.26101 PHOTON | Decimals: 6
+
+PHOTON | [timestamp]
+12.26101
+Raw: 12261010
+```
+
+## Key Changes
+
+✅ **UI Only Shows Live Chains**: No more akash, cosmoshub, juno, stargaze
+✅ **Human Readable Balances**: 12261010 → 12.26101 PHOTON  
+✅ **Real-time Data**: Direct from metrics endpoint  
+✅ **Clean Interface**: No USD prices, focus on balance amounts
+
 ## Monitoring
 
 The service provides comprehensive health monitoring:
