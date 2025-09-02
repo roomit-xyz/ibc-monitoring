@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IBC Monitor - Admin Panel</title>
+    <link rel="icon" type="image/png" href="/img/logo-roomit.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            200: '#bbf7d0',
+                            300: '#86efac',
+                            400: '#4ade80',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .secure-content {
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
+        <div class="text-center">
+            <div class="w-16 h-16 bg-gradient-to-r from-green-400 to-emerald-500 rounded-lg flex items-center justify-center shadow-lg mx-auto mb-4">
+                <span class="text-white font-bold text-2xl">🔧</span>
+            </div>
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-2"></div>
+            <p class="text-gray-600">Loading Admin Panel...</p>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div id="mainContent" class="hidden">
+        <!-- Header -->
+        <header class="bg-white shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center py-4">
+                    <div class="flex items-center space-x-3">
+                        <img src="/img/logo-roomit.png" alt="Roomit Logo" class="w-8 h-8 rounded">
+                        <div>
+                            <h1 class="text-2xl font-bold text-gray-900">IBC Monitor Admin</h1>
+                            <p class="text-sm text-gray-600">System administration panel • PT Roomit Trimiko Digital</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <a href="/" class="text-primary-600 hover:text-primary-700 font-medium">
+                            ← Back to Dashboard
+                        </a>
+                        <div class="flex items-center space-x-2 text-sm text-gray-600">
+                            <span id="adminUserName"></span>
+                            <span class="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full">Admin</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+            <div class="border-b border-gray-200">
+                <nav class="-mb-px flex space-x-8">
+                    <button id="usersTab" class="admin-tab active border-primary-500 text-primary-600 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
+                        Users
+                    </button>
+                    <button id="sourcesTab" class="admin-tab border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
+                        Metrics Sources
+                    </button>
+                    <button id="configTab" class="admin-tab border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
+                        Configuration
+                    </button>
+                    <button id="alertsTab" class="admin-tab border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
+                        Alerts
+                    </button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            
+            <!-- Users Tab -->
+            <div id="usersPanel" class="tab-panel">
+                <div class="bg-white shadow rounded-lg">
+                    <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                        <h3 class="text-lg font-medium text-gray-900">User Management</h3>
+                        <button id="addUserBtn" class="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 text-sm font-medium">
+                            Add User
+                        </button>
+                    </div>
+                    <div class="p-6">
+                        <div id="usersTable" class="overflow-x-auto">
+                            <div class="text-center py-8 text-gray-500">Loading users...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metrics Sources Tab -->
+            <div id="sourcesPanel" class="tab-panel hidden">
+                <div class="bg-white shadow rounded-lg">
+                    <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                        <h3 class="text-lg font-medium text-gray-900">Metrics Sources</h3>
+                        <button id="addSourceBtn" class="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 text-sm font-medium">
+                            Add Source
+                        </button>
+                    </div>
+                    <div class="p-6">
+                        <div id="sourcesTable" class="overflow-x-auto">
+                            <div class="text-center py-8 text-gray-500">Loading sources...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Configuration Tab -->
+            <div id="configPanel" class="tab-panel hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white shadow rounded-lg">
+                        <div class="px-6 py-4 border-b border-gray-200">
+                            <h3 class="text-lg font-medium text-gray-900">Authentication Settings</h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Authentication Method</label>
+                                <select id="authMethod" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500">
+                                    <option value="sqlite">SQLite (Local Database)</option>
+                                    <option value="ldap">LDAP Directory</option>
+                                </select>
+                            </div>
+                            <div id="ldapSettings" class="space-y-4 hidden">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">LDAP Server</label>
+                                    <input type="url" id="ldapServer" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
+                                           placeholder="ldap://your-server.com">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">LDAP Port</label>
+                                    <input type="number" id="ldapPort" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
+                                           value="389">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Bind DN</label>
+                                    <input type="text" id="ldapBindDN" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
+                                           placeholder="cn=admin,dc=example,dc=com">
+                                </div>
+                            </div>
+                            <button id="saveAuthConfig" class="w-full bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700">
+                                Save Authentication Settings
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white shadow rounded-lg">
+                        <div class="px-6 py-4 border-b border-gray-200">
+                            <h3 class="text-lg font-medium text-gray-900">System Settings</h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Session Timeout (hours)</label>
+                                <input type="number" id="sessionTimeout" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
+                                       min="1" max="168" value="24">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Max Failed Login Attempts</label>
+                                <input type="number" id="maxFailedLogins" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
+                                       min="1" max="100" value="5">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Application Name</label>
+                                <input type="text" id="appName" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
+                                       value="IBC Monitor">
+                            </div>
+                            <button id="saveSystemConfig" class="w-full bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700">
+                                Save System Settings
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts Tab -->
+            <div id="alertsPanel" class="tab-panel hidden">
+                <div class="bg-white shadow rounded-lg">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-medium text-gray-900">Alert Management</h3>
+                    </div>
+                    <div class="p-6">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                            <div class="text-center p-4 bg-gray-50 rounded-lg">
+                                <div class="text-2xl font-bold text-red-600" id="criticalAlerts">0</div>
+                                <div class="text-sm text-gray-600">Critical Alerts</div>
+                            </div>
+                            <div class="text-center p-4 bg-gray-50 rounded-lg">
+                                <div class="text-2xl font-bold text-yellow-600" id="warningAlerts">0</div>
+                                <div class="text-sm text-gray-600">Warning Alerts</div>
+                            </div>
+                            <div class="text-center p-4 bg-gray-50 rounded-lg">
+                                <div class="text-2xl font-bold text-blue-600" id="infoAlerts">0</div>
+                                <div class="text-sm text-gray-600">Info Alerts</div>
+                            </div>
+                        </div>
+                        <div id="alertsHistory" class="overflow-x-auto">
+                            <div class="text-center py-8 text-gray-500">Loading alert history...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div class="mt-8">
+                <div class="bg-white shadow rounded-lg p-4 text-center">
+                    <div class="border-t border-gray-100 pt-3">
+                        <p class="text-xs text-gray-500 mb-1">
+                            © 2024 PT Roomit Trimiko Digital. All rights reserved.
+                        </p>
+                        <p class="text-xs text-gray-400">
+                            Enterprise Blockchain Infrastructure Solutions • IBC Monitor Admin Panel v1.0.0
+                        </p>
+                        <p class="text-xs text-gray-400 mt-1">
+                            🌐 <a href="https://roomit.xyz" target="_blank" class="text-green-600 hover:text-green-700">roomit.xyz</a> | 
+                            📧 <a href="mailto:info@roomit.xyz" class="text-green-600 hover:text-green-700">info@roomit.xyz</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Modal -->
+    <div id="userModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-900" id="userModalTitle">Add User</h3>
+                </div>
+                <form id="userForm" class="p-6 space-y-4">
+                    <input type="hidden" id="userId">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                        <input type="text" id="userUsername" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                        <input type="email" id="userEmail" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                        <input type="password" id="userPassword" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500">
+                        <p class="text-xs text-gray-500 mt-1">Leave blank to keep current password when editing</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                        <select id="userRole" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500">
+                            <option value="monitoring">Monitoring</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="flex items-center">
+                            <input type="checkbox" id="userActive" checked class="rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+                            <span class="ml-2 text-sm text-gray-700">Account is active</span>
+                        </label>
+                    </div>
+                </form>
+                <div class="px-6 py-4 bg-gray-50 border-t flex justify-end space-x-3">
+                    <button id="cancelUser" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <button id="saveUser" class="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700">
+                        Save User
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-4 right-4 bg-white border-l-4 border-green-400 rounded-lg shadow-lg p-4 transform translate-y-full transition-transform duration-300 z-40 max-w-sm">
+        <div class="flex items-center">
+            <span id="toastIcon" class="text-green-400 text-lg mr-3">✅</span>
+            <div>
+                <p class="text-sm font-medium text-gray-900" id="toastTitle">Success</p>
+                <p class="text-sm text-gray-600" id="toastMessage">Operation completed</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Admin panel functionality will be implemented here
+        // This is a placeholder - full implementation would include:
+        // - Tab switching
+        // - User CRUD operations  
+        // - Metrics source management
+        // - Configuration management
+        // - Alert history display
+        
+        class AdminPanel {
+            constructor() {
+                this.token = localStorage.getItem('token');
+                this.user = JSON.parse(localStorage.getItem('user') || '{}');
+                
+                if (!this.token || this.user.role !== 'admin') {
+                    window.location.href = '/';
+                    return;
+                }
+                
+                this.initialize();
+            }
+            
+            async initialize() {
+                this.setupUI();
+                this.setupEventListeners();
+                await this.loadData();
+                this.hideLoadingScreen();
+            }
+            
+            setupUI() {
+                document.getElementById('adminUserName').textContent = this.user.username;
+            }
+            
+            setupEventListeners() {
+                // Tab switching
+                document.querySelectorAll('.admin-tab').forEach(tab => {
+                    tab.addEventListener('click', (e) => {
+                        this.switchTab(e.target.id);
+                    });
+                });
+                
+                // Modal close
+                document.getElementById('cancelUser').addEventListener('click', () => {
+                    this.hideUserModal();
+                });
+                
+                // Add user button
+                document.getElementById('addUserBtn').addEventListener('click', () => {
+                    this.showAddUserModal();
+                });
+            }
+            
+            switchTab(tabId) {
+                // Remove active class from all tabs
+                document.querySelectorAll('.admin-tab').forEach(tab => {
+                    tab.className = 'admin-tab border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm';
+                });
+                
+                // Hide all panels
+                document.querySelectorAll('.tab-panel').forEach(panel => {
+                    panel.classList.add('hidden');
+                });
+                
+                // Activate selected tab
+                document.getElementById(tabId).className = 'admin-tab active border-primary-500 text-primary-600 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm';
+                
+                // Show corresponding panel
+                const panelId = tabId.replace('Tab', 'Panel');
+                document.getElementById(panelId).classList.remove('hidden');
+                
+                // Load data for the selected tab
+                this.loadTabData(panelId);
+            }
+            
+            async loadData() {
+                await this.loadUsers();
+            }
+            
+            async loadUsers() {
+                try {
+                    const response = await fetch('/api/users', {
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`
+                        },
+                        credentials: 'include'
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.displayUsers(data.users);
+                    }
+                } catch (error) {
+                    console.error('Failed to load users:', error);
+                }
+            }
+            
+            displayUsers(users) {
+                const table = document.getElementById('usersTable');
+                
+                if (!users || users.length === 0) {
+                    table.innerHTML = '<div class="text-center py-8 text-gray-500">No users found</div>';
+                    return;
+                }
+                
+                const tableHtml = `
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Login</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            ${users.map(user => `
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div>
+                                            <div class="text-sm font-medium text-gray-900">${this.escapeHtml(user.username)}</div>
+                                            <div class="text-sm text-gray-500">${this.escapeHtml(user.email || '')}</div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 text-xs font-medium rounded-full ${user.role === 'admin' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}">
+                                            ${user.role}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 text-xs font-medium rounded-full ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
+                                            ${user.is_active ? 'Active' : 'Inactive'}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        ${user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <button onclick="adminPanel.editUser(${user.id})" class="text-indigo-600 hover:text-indigo-900 mr-3">Edit</button>
+                                        <button onclick="adminPanel.deleteUser(${user.id})" class="text-red-600 hover:text-red-900">Delete</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+                
+                table.innerHTML = tableHtml;
+            }
+            
+            showAddUserModal() {
+                document.getElementById('userModalTitle').textContent = 'Add User';
+                document.getElementById('userForm').reset();
+                document.getElementById('userId').value = '';
+                document.getElementById('userModal').classList.remove('hidden');
+            }
+            
+            hideUserModal() {
+                document.getElementById('userModal').classList.add('hidden');
+            }
+            
+            hideLoadingScreen() {
+                document.getElementById('loadingScreen').classList.add('hidden');
+                document.getElementById('mainContent').classList.remove('hidden');
+            }
+            
+            showToast(title, message, type = 'success') {
+                const toast = document.getElementById('toast');
+                const icon = document.getElementById('toastIcon');
+                const titleEl = document.getElementById('toastTitle');
+                const messageEl = document.getElementById('toastMessage');
+                
+                titleEl.textContent = title;
+                messageEl.textContent = message;
+                
+                if (type === 'error') {
+                    icon.textContent = '❌';
+                    toast.className = toast.className.replace('border-green-400', 'border-red-400');
+                } else {
+                    icon.textContent = '✅';
+                    toast.className = toast.className.replace('border-red-400', 'border-green-400');
+                }
+                
+                toast.style.transform = 'translateY(0)';
+                
+                setTimeout(() => {
+                    toast.style.transform = 'translateY(100%)';
+                }, 3000);
+            }
+            
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+            
+            async loadTabData(panelId) {
+                // Implementation for loading data for different tabs
+                switch (panelId) {
+                    case 'usersPanel':
+                        await this.loadUsers();
+                        break;
+                    case 'sourcesPanel':
+                        // Load metrics sources
+                        break;
+                    case 'configPanel':
+                        // Load configuration
+                        break;
+                    case 'alertsPanel':
+                        // Load alerts
+                        break;
+                }
+            }
+        }
+        
+        // Initialize admin panel
+        let adminPanel;
+        document.addEventListener('DOMContentLoaded', () => {
+            adminPanel = new AdminPanel();
+        });
+    </script>
+</body>
+</html>

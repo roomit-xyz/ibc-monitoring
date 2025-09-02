@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IBC Monitor - Login</title>
+    <link rel="icon" type="image/png" href="/img/logo-roomit.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            200: '#bbf7d0',
+                            300: '#86efac',
+                            400: '#4ade80',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-green-50 to-emerald-100 min-h-screen">
+    <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-md w-full space-y-8">
+            <!-- Logo and Title -->
+            <div class="fade-in">
+                <div class="flex justify-center">
+                    <img src="/img/logo-roomit.png" alt="Roomit Logo" class="w-16 h-16 shadow-lg rounded-lg">
+                </div>
+                <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                    IBC Monitor
+                </h2>
+                <p class="mt-2 text-center text-sm text-gray-600">
+                    Sign in to your monitoring account
+                </p>
+                <p class="mt-1 text-center text-xs text-gray-500">
+                    Powered by PT Roomit Trimiko Digital
+                </p>
+            </div>
+
+            <!-- Login Form -->
+            <div class="fade-in bg-white rounded-xl shadow-lg p-8">
+                <form class="space-y-6" id="loginForm">
+                    <div class="space-y-4">
+                        <div>
+                            <label for="username" class="block text-sm font-medium text-gray-700">
+                                Username
+                            </label>
+                            <div class="mt-1">
+                                <input id="username" name="username" type="text" autocomplete="username" required
+                                    class="appearance-none block w-full px-3 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                                    placeholder="Enter your username">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="password" class="block text-sm font-medium text-gray-700">
+                                Password
+                            </label>
+                            <div class="mt-1">
+                                <input id="password" name="password" type="password" autocomplete="current-password" required
+                                    class="appearance-none block w-full px-3 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                                    placeholder="Enter your password">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <input id="rememberMe" name="rememberMe" type="checkbox" 
+                                class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">
+                            <label for="rememberMe" class="ml-2 block text-sm text-gray-900">
+                                Remember me for 30 days
+                            </label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <button type="submit" id="loginBtn"
+                            class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span id="loginBtnText">Sign in</span>
+                            <svg id="loginSpinner" class="hidden animate-spin -mr-1 ml-3 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <!-- Error Message -->
+                    <div id="errorMessage" class="hidden bg-red-50 border border-red-300 text-red-800 px-4 py-3 rounded-lg text-sm">
+                        <div class="flex">
+                            <svg class="h-4 w-4 mt-0.5 mr-2 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span id="errorText"></span>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Footer -->
+            <div class="text-center">
+                <p class="text-xs text-gray-500 mb-2">
+                    Secure authentication • Role-based access • Real-time monitoring
+                </p>
+                <div class="border-t border-gray-200 pt-4">
+                    <p class="text-xs text-gray-400">
+                        © 2024 PT Roomit Trimiko Digital. All rights reserved.
+                    </p>
+                    <p class="text-xs text-gray-400">
+                        Enterprise Blockchain Infrastructure Solutions
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class LoginManager {
+            constructor() {
+                this.form = document.getElementById('loginForm');
+                this.usernameInput = document.getElementById('username');
+                this.passwordInput = document.getElementById('password');
+                this.rememberMeInput = document.getElementById('rememberMe');
+                this.loginBtn = document.getElementById('loginBtn');
+                this.loginBtnText = document.getElementById('loginBtnText');
+                this.loginSpinner = document.getElementById('loginSpinner');
+                this.errorMessage = document.getElementById('errorMessage');
+                this.errorText = document.getElementById('errorText');
+
+                this.initializeEventListeners();
+                this.checkExistingSession();
+            }
+
+            initializeEventListeners() {
+                this.form.addEventListener('submit', this.handleLogin.bind(this));
+
+                // Clear error message when user starts typing
+                [this.usernameInput, this.passwordInput].forEach(input => {
+                    input.addEventListener('input', () => {
+                        this.hideError();
+                    });
+                });
+
+                // Enter key handling
+                [this.usernameInput, this.passwordInput].forEach(input => {
+                    input.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') {
+                            this.handleLogin(e);
+                        }
+                    });
+                });
+            }
+
+            async checkExistingSession() {
+                try {
+                    const response = await fetch('/api/auth/status', {
+                        credentials: 'include'
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.authenticated) {
+                            // User is already logged in, redirect to dashboard
+                            window.location.href = '/';
+                        }
+                    }
+                } catch (error) {
+                    // Session check failed, stay on login page
+                    console.debug('No existing session');
+                }
+            }
+
+            async handleLogin(e) {
+                e.preventDefault();
+                
+                const username = this.usernameInput.value.trim();
+                const password = this.passwordInput.value;
+                const rememberMe = this.rememberMeInput.checked;
+
+                // Validate input
+                if (!username || !password) {
+                    this.showError('Please enter both username and password');
+                    return;
+                }
+
+                this.setLoading(true);
+
+                try {
+                    const response = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        credentials: 'include',
+                        body: JSON.stringify({
+                            username,
+                            password,
+                            rememberMe
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok && data.success) {
+                        // Store token for API requests
+                        localStorage.setItem('token', data.token);
+                        
+                        // Store user info
+                        localStorage.setItem('user', JSON.stringify(data.user));
+
+                        // Success - redirect to dashboard
+                        this.showSuccess('Login successful! Redirecting...');
+                        
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 1000);
+
+                    } else {
+                        // Login failed
+                        const errorMsg = data.error || 'Login failed. Please try again.';
+                        this.showError(errorMsg);
+                        
+                        // Clear password field on error
+                        this.passwordInput.value = '';
+                        this.passwordInput.focus();
+                    }
+
+                } catch (error) {
+                    console.error('Login error:', error);
+                    this.showError('Connection error. Please check your network and try again.');
+                } finally {
+                    this.setLoading(false);
+                }
+            }
+
+            setLoading(loading) {
+                this.loginBtn.disabled = loading;
+                
+                if (loading) {
+                    this.loginBtnText.textContent = 'Signing in...';
+                    this.loginSpinner.classList.remove('hidden');
+                } else {
+                    this.loginBtnText.textContent = 'Sign in';
+                    this.loginSpinner.classList.add('hidden');
+                }
+            }
+
+            showError(message) {
+                this.errorText.textContent = message;
+                this.errorMessage.classList.remove('hidden');
+                this.errorMessage.classList.remove('bg-green-50', 'border-green-300', 'text-green-800');
+                this.errorMessage.classList.add('bg-red-50', 'border-red-300', 'text-red-800');
+            }
+
+            showSuccess(message) {
+                this.errorText.textContent = message;
+                this.errorMessage.classList.remove('hidden');
+                this.errorMessage.classList.remove('bg-red-50', 'border-red-300', 'text-red-800');
+                this.errorMessage.classList.add('bg-green-50', 'border-green-300', 'text-green-800');
+            }
+
+            hideError() {
+                this.errorMessage.classList.add('hidden');
+            }
+        }
+
+        // Initialize login manager when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new LoginManager();
+        });
+
+        // Security: Clear sensitive data on page unload
+        window.addEventListener('beforeunload', () => {
+            // Clear password field
+            const passwordInput = document.getElementById('password');
+            if (passwordInput) {
+                passwordInput.value = '';
+            }
+        });
+
+        // Prevent form submission via enter key in password field to avoid accidental submissions
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.target.type === 'password') {
+                e.preventDefault();
+                document.getElementById('loginBtn').click();
+            }
+        });
+    </script>
+</body>
+</html>

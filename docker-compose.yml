@@ -1,0 +1,55 @@
+# IBC Monitor - Docker Compose Configuration
+# Developed by PT Roomit Trimiko Digital
+
+version: '3.8'
+
+services:
+  ibc-monitor:
+    build: .
+    container_name: ibc-monitor
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    volumes:
+      - ./database:/app/database
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    networks:
+      - ibc-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: ibc-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - ibc-monitor
+    restart: unless-stopped
+    networks:
+      - ibc-network
+    profiles:
+      - proxy
+
+networks:
+  ibc-network:
+    driver: bridge
+
+volumes:
+  database-data:
+    driver: local
+  logs-data:
+    driver: local

@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IBC Hermes Monitor - Real-time</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            200: '#bbf7d0',
+                            300: '#86efac',
+                            400: '#4ade80',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes pulse-green {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .pulse-green {
+            animation: pulse-green 2s ease-in-out infinite;
+        }
+        @keyframes slide-up {
+            from { transform: translateY(10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .slide-up {
+            animation: slide-up 0.3s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-green-50 to-emerald-100 min-h-screen">
+    <!-- Configuration Panel -->
+    <div id="config-panel" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-900">⚙️ Configuration</h3>
+                </div>
+                <div class="p-6 space-y-6">
+                    <!-- Hermes Endpoint -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Hermes Metrics Endpoint</label>
+                        <input type="url" id="hermes-endpoint" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500" 
+                               placeholder="http://localhost:4001/metrics" value="http://localhost:4001/metrics">
+                    </div>
+                    
+                    <!-- Gotify Configuration -->
+                    <div class="border-t pt-6">
+                        <h4 class="text-md font-semibold text-gray-900 mb-4">🔔 Gotify Alerts</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Gotify Server URL</label>
+                                <input type="url" id="gotify-url" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500" 
+                                       placeholder="https://gotify.example.com">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">App Token</label>
+                                <input type="password" id="gotify-token" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500" 
+                                       placeholder="Application token">
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <label class="flex items-center">
+                                <input type="checkbox" id="gotify-enabled" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+                                <span class="ml-2 text-sm text-gray-700">Enable Gotify notifications</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Alert Thresholds -->
+                    <div class="border-t pt-6">
+                        <h4 class="text-md font-semibold text-gray-900 mb-4">⚠️ Alert Thresholds</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Pending Packets Warning</label>
+                                <input type="number" id="pending-warning" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500" 
+                                       value="10" min="1">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Pending Packets Critical</label>
+                                <input type="number" id="pending-critical" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500" 
+                                       value="50" min="1">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Failed Packets Alert</label>
+                                <input type="number" id="failed-alert" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500" 
+                                       value="1" min="0">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Low Balance Alert (%)</label>
+                                <input type="number" id="balance-alert" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500" 
+                                       value="20" min="1" max="100">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Refresh Interval (seconds)</label>
+                                <input type="number" id="refresh-interval" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500" 
+                                       value="10" min="5" max="300">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="px-6 py-4 bg-gray-50 border-t flex justify-end space-x-3">
+                    <button id="config-cancel" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <button id="config-save" class="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700">
+                        Save Configuration
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-white shadow-sm border-b border-green-200">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center py-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 bg-gradient-to-r from-green-400 to-emerald-500 rounded-lg flex items-center justify-center">
+                            <span class="text-white font-bold text-sm">🌉</span>
+                        </div>
+                        <div>
+                            <h1 class="text-2xl font-bold text-gray-900">IBC Hermes Monitor</h1>
+                            <p class="text-sm text-gray-600">Real-time Inter-Blockchain Communication monitoring</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="flex items-center space-x-2">
+                            <div id="connection-status" class="w-3 h-3 rounded-full bg-gray-400"></div>
+                            <span id="connection-text" class="text-sm text-gray-600">Connecting...</span>
+                        </div>
+                        <button id="config-btn" class="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors">
+                            ⚙️ Settings
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Status Bar -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="bg-white rounded-xl shadow-sm border border-green-100 p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                                <span class="text-green-600 font-semibold">🔗</span>
+                            </div>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm font-medium text-gray-900">Active Chains</p>
+                            <p id="chain-count" class="text-2xl font-bold text-green-600">-</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm border border-yellow-100 p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-yellow-100 rounded-lg flex items-center justify-center">
+                                <span class="text-yellow-600 font-semibold">⏳</span>
+                            </div>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm font-medium text-gray-900">Pending Packets</p>
+                            <p id="pending-count" class="text-2xl font-bold text-yellow-600">-</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm border border-red-100 p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                                <span class="text-red-600 font-semibold">❌</span>
+                            </div>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm font-medium text-gray-900">Failed Packets</p>
+                            <p id="failed-count" class="text-2xl font-bold text-red-600">-</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm border border-blue-100 p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                                <span class="text-blue-600 font-semibold">⚡</span>
+                            </div>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm font-medium text-gray-900">Active Workers</p>
+                            <p id="worker-count" class="text-2xl font-bold text-blue-600">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Content -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Chain Status -->
+                <div class="bg-white rounded-xl shadow-sm border border-green-100">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-900 flex items-center">
+                            <span class="mr-2">📦</span>
+                            Chain Status
+                            <span id="chain-loading" class="ml-2 w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin hidden"></span>
+                        </h3>
+                    </div>
+                    <div class="p-6">
+                        <div id="chain-status" class="space-y-3 max-h-96 overflow-y-auto">
+                            <div class="text-center text-gray-500 py-8">Loading chain data...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issues & Alerts -->
+                <div class="bg-white rounded-xl shadow-sm border border-red-100">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-900 flex items-center">
+                            <span class="mr-2">⚠️</span>
+                            Issues & Alerts
+                            <span id="alert-count" class="ml-2 px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full hidden">0</span>
+                        </h3>
+                    </div>
+                    <div class="p-6">
+                        <div id="issues-list" class="space-y-3 max-h-96 overflow-y-auto">
+                            <div class="text-center text-gray-500 py-8">Checking for issues...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wallet Balances -->
+            <div class="mt-8 bg-white rounded-xl shadow-sm border border-green-100">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-900 flex items-center">
+                        <span class="mr-2">💰</span>
+                        Wallet Balances
+                        <span id="balance-loading" class="ml-2 w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin hidden"></span>
+                    </div>
+                </div>
+                <div class="p-6">
+                    <div id="wallet-balances" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div class="col-span-full text-center text-gray-500 py-8">Loading wallet data...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="mt-8 text-center">
+                <div class="bg-white rounded-xl shadow-sm border border-green-100 p-4">
+                    <p class="text-sm text-gray-600">
+                        Last updated: <span id="last-update" class="font-medium text-green-600">-</span> | 
+                        Next refresh in: <span id="refresh-countdown" class="font-medium text-green-600">-</span>s |
+                        <span id="gotify-status" class="text-gray-400">Gotify: Disabled</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Toast -->
+    <div id="alert-toast" class="fixed bottom-4 right-4 bg-white border-l-4 border-red-400 rounded-lg shadow-lg p-4 transform translate-y-full transition-transform duration-300 z-40">
+        <div class="flex items-center">
+            <div class="flex-shrink-0">
+                <span class="text-red-400 text-lg">🚨</span>
+            </div>
+            <div class="ml-3">
+                <p class="text-sm font-medium text-gray-900" id="alert-title">Alert</p>
+                <p class="text-sm text-gray-600" id="alert-message">New issue detected</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class HermesRealTimeMonitor {
+            constructor() {
+                this.config = this.loadConfig();
+                this.metrics = {};
+                this.chains = new Set();
+                this.lastAlerts = new Set();
+                this.refreshTimer = null;
+                this.countdownTimer = null;
+                this.countdownSeconds = 0;
+                
+                this.initializeUI();
+                this.startMonitoring();
+            }
+
+            loadConfig() {
+                const defaultConfig = {
+                    hermesEndpoint: 'http://localhost:4001/metrics',
+                    gotifyUrl: '',
+                    gotifyToken: '',
+                    gotifyEnabled: false,
+                    pendingWarning: 10,
+                    pendingCritical: 50,
+                    failedAlert: 1,
+                    balanceAlert: 20,
+                    refreshInterval: 10
+                };
+
+                const saved = localStorage.getItem('hermes-monitor-config');
+                return saved ? { ...defaultConfig, ...JSON.parse(saved) } : defaultConfig;
+            }
+
+            saveConfig() {
+                localStorage.setItem('hermes-monitor-config', JSON.stringify(this.config));
+            }
+
+            initializeUI() {
+                // Configuration panel
+                document.getElementById('config-btn').addEventListener('click', () => {
+                    this.showConfigPanel();
+                });
+
+                document.getElementById('config-cancel').addEventListener('click', () => {
+                    this.hideConfigPanel();
+                });
+
+                document.getElementById('config-save').addEventListener('click', () => {
+                    this.saveConfiguration();
+                });
+
+                // Close config panel on backdrop click
+                document.getElementById('config-panel').addEventListener('click', (e) => {
+                    if (e.target === e.currentTarget) {
+                        this.hideConfigPanel();
+                    }
+                });
+
+                this.updateGotifyStatus();
+            }
+
+            showConfigPanel() {
+                // Populate form with current config
+                document.getElementById('hermes-endpoint').value = this.config.hermesEndpoint;
+                document.getElementById('gotify-url').value = this.config.gotifyUrl;
+                document.getElementById('gotify-token').value = this.config.gotifyToken;
+                document.getElementById('gotify-enabled').checked = this.config.gotifyEnabled;
+                document.getElementById('pending-warning').value = this.config.pendingWarning;
+                document.getElementById('pending-critical').value = this.config.pendingCritical;
+                document.getElementById('failed-alert').value = this.config.failedAlert;
+                document.getElementById('balance-alert').value = this.config.balanceAlert;
+                document.getElementById('refresh-interval').value = this.config.refreshInterval;
+
+                document.getElementById('config-panel').classList.remove('hidden');
+            }
+
+            hideConfigPanel() {
+                document.getElementById('config-panel').classList.add('hidden');
+            }
+
+            saveConfiguration() {
+                this.config = {
+                    hermesEndpoint: document.getElementById('hermes-endpoint').value,
+                    gotifyUrl: document.getElementById('gotify-url').value,
+                    gotifyToken: document.getElementById('gotify-token').value,
+                    gotifyEnabled: document.getElementById('gotify-enabled').checked,
+                    pendingWarning: parseInt(document.getElementById('pending-warning').value),
+                    pendingCritical: parseInt(document.getElementById('pending-critical').value),
+                    failedAlert: parseInt(document.getElementById('failed-alert').value),
+                    balanceAlert: parseInt(document.getElementById('balance-alert').value),
+                    refreshInterval: parseInt(document.getElementById('refresh-interval').value)
+                };
+
+                this.saveConfig();
+                this.updateGotifyStatus();
+                this.hideConfigPanel();
+                this.restartMonitoring();
+                this.showToast('Configuration Saved', 'Settings have been updated successfully');
+            }
+
+            updateGotifyStatus() {
+                const status = document.getElementById('gotify-status');
+                if (this.config.gotifyEnabled && this.config.gotifyUrl && this.config.gotifyToken) {
+                    status.textContent = 'Gotify: Enabled';
+                    status.className = 'text-green-600';
+                } else {
+                    status.textContent = 'Gotify: Disabled';
+                    status.className = 'text-gray-400';
+                }
+            }
+
+            async startMonitoring() {
+                await this.fetchMetrics();
+                this.startRefreshTimer();
+            }
+
+            restartMonitoring() {
+                clearInterval(this.refreshTimer);
+                clearInterval(this.countdownTimer);
+                this.startMonitoring();
+            }
+
+            startRefreshTimer() {
+                this.countdownSeconds = this.config.refreshInterval;
+                
+                this.refreshTimer = setInterval(async () => {
+                    await this.fetchMetrics();
+                    this.countdownSeconds = this.config.refreshInterval;
+                }, this.config.refreshInterval * 1000);
+
+                this.countdownTimer = setInterval(() => {
+                    this.countdownSeconds--;
+                    document.getElementById('refresh-countdown').textContent = this.countdownSeconds;
+                    
+                    if (this.countdownSeconds <= 0) {
+                        this.countdownSeconds = this.config.refreshInterval;
+                    }
+                }, 1000);
+            }
+
+            async fetchMetrics() {
+                try {
+                    this.showLoading(true);
+                    
+                    const response = await fetch(this.config.hermesEndpoint);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    
+                    const text = await response.text();
+                    this.parseMetrics(text);
+                    this.updateDashboard();
+                    this.checkAlerts();
+                    this.updateConnectionStatus(true);
+                    this.updateLastUpdate();
+                    
+                } catch (error) {
+                    console.error('Error fetching metrics:', error);
+                    this.updateConnectionStatus(false, error.message);
+                    this.showError(`Failed to fetch metrics: ${error.message}`);
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+
+            showLoading(show) {
+                const loaders = ['chain-loading', 'balance-loading'];
+                loaders.forEach(id => {
+                    const element = document.getElementById(id);
+                    if (element) {
+                        element.classList.toggle('hidden', !show);
+                    }
+                });
+            }
+
+            parseMetrics(text) {
+                this.metrics = {};
+                this.chains.clear();
+                
+                const lines = text.split('\n');
+                
+                for (const line of lines) {
+                    if (line.startsWith('#') || !line.trim()) continue;
+                    
+                    const match = line.match(/^([^\{]+)(\{[^}]+\})?\s+(.+)$/);
+                    if (!match) continue;
+                    
+                    const [, metricName, labels, value] = match;
+                    
+                    if (!this.metrics[metricName]) {
+                        this.metrics[metricName] = [];
+                    }
+                    
+                    const labelObj = {};
+                    if (labels) {
+                        const labelMatches = labels.slice(1, -1).match(/(\w+)="([^"]+)"/g);
+                        if (labelMatches) {
+                            labelMatches.forEach(label => {
+                                const [key, val] = label.split('=');
+                                labelObj[key] = val.replace(/"/g, '');
+                            });
+                        }
+                    }
+                    
+                    this.metrics[metricName].push({
+                        labels: labelObj,
+                        value: parseFloat(value)
+                    });
+                    
+                    if (labelObj.chain) {
+                        this.chains.add(labelObj.chain);
+                    }
+                }
+            }
+
+            updateDashboard() {
+                this.updateStatusCards();
+                this.updateChainStatus();
+                this.updateIssuesList();
+                this.updateWalletBalances();
+            }
+
+            updateStatusCards() {
+                document.getElementById('chain-count').textContent = this.chains.size;
+                
+                const pendingPackets = this.calculatePendingPackets();
+                const failedPackets = this.calculateFailedPackets();
+                const totalWorkers = this.calculateTotalWorkers();
+                
+                document.getElementById('pending-count').textContent = pendingPackets;
+                document.getElementById('failed-count').textContent = failedPackets;
+                document.getElementById('worker-count').textContent = totalWorkers;
+            }
+
+            calculatePendingPackets() {
+                let pending = 0;
+                
+                if (this.metrics.send_packet_events_total && this.metrics.acknowledgement_events_total) {
+                    const sentPackets = this.sumMetricValues('send_packet_events_total');
+                    const acknowledgedPackets = this.sumMetricValues('acknowledgement_events_total');
+                    pending = Math.max(0, sentPackets - acknowledgedPackets);
+                }
+                
+                return pending;
+            }
+
+            calculateFailedPackets() {
+                let failed = 0;
+                failed += this.sumMetricValues('timeout_events_total') || 0;
+                failed += this.sumMetricValues('simulate_errors_total') || 0;
+                return failed;
+            }
+
+            calculateTotalWorkers() {
+                return this.sumMetricValues('workers') || 0;
+            }
+
+            sumMetricValues(metricName) {
+                if (!this.metrics[metricName]) return 0;
+                return this.metrics[metricName].reduce((sum, item) => sum + item.value, 0);
+            }
+
+            updateChainStatus() {
+                const container = document.getElementById('chain-status');
+                container.innerHTML = '';
+                
+                if (this.chains.size === 0) {
+                    container.innerHTML = '<div class="text-center text-gray-500 py-8">No chains detected</div>';
+                    return;
+                }
+
+                Array.from(this.chains).sort().forEach(chain => {
+                    const chainElement = this.createChainElement(chain);
+                    container.appendChild(chainElement);
+                });
+            }
+
+            createChainElement(chainName) {
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors slide-up';
+                
+                const info = document.createElement('div');
+                info.className = 'flex-1';
+                
+                const name = document.createElement('div');
+                name.className = 'font-medium text-gray-900';
+                name.textContent = chainName;
+                
+                const details = document.createElement('div');
+                details.className = 'text-sm text-gray-600';
+                
+                const events = this.getChainEvents(chainName);
+                details.textContent = `Events: ${events.total} | Queries: ${events.queries}`;
+                
+                info.appendChild(name);
+                info.appendChild(details);
+                
+                const status = document.createElement('span');
+                const healthStatus = this.getChainHealthStatus(chainName);
+                status.className = `px-3 py-1 text-xs font-medium rounded-full ${this.getStatusClasses(healthStatus)}`;
+                status.textContent = this.getStatusText(healthStatus);
+                
+                div.appendChild(info);
+                div.appendChild(status);
+                
+                return div;
+            }
+
+            getChainEvents(chainName) {
+                let total = 0;
+                let queries = 0;
+                
+                if (this.metrics.ws_events_total) {
+                    const chainEvents = this.metrics.ws_events_total.find(m => m.labels.chain === chainName);
+                    if (chainEvents) total = chainEvents.value;
+                }
+                
+                if (this.metrics.queries_total) {
+                    const chainQueries = this.metrics.queries_total
+                        .filter(m => m.labels.chain === chainName)
+                        .reduce((sum, m) => sum + m.value, 0);
+                    queries = chainQueries;
+                }
+                
+                return { total, queries };
+            }
+
+            getChainHealthStatus(chainName) {
+                const reconnects = this.metrics.ws_reconnect_total?.find(m => m.labels.chain === chainName)?.value || 0;
+                const errors = this.metrics.simulate_errors_total?.filter(m => 
+                    this.extractChainFromAccount(m.labels.account) === chainName
+                ).length || 0;
+                
+                if (errors > 0) return 'critical';
+                if (reconnects > 2) return 'warning';
+                return 'healthy';
+            }
+
+            getStatusClasses(status) {
+                switch (status) {
+                    case 'healthy': return 'bg-green-100 text-green-800';
+                    case 'warning': return 'bg-yellow-100 text-yellow-800';
+                    case 'critical': return 'bg-red-100 text-red-800';
+                    default: return 'bg-gray-100 text-gray-800';
+                }
+            }
+
+            getStatusText(status) {
+                switch (status) {
+                    case 'healthy': return 'Healthy';
+                    case 'warning': return 'Warning';
+                    case 'critical': return 'Critical';
+                    default: return 'Unknown';
+                }
+            }
+
+            updateIssuesList() {
+                const container = document.getElementById('issues-list');
+                const alertCountBadge = document.getElementById('alert-count');
+                container.innerHTML = '';
+                
+                const issues = this.collectIssues();
+                
+                if (issues.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-8">
+                            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span class="text-green-600 text-2xl">✅</span>
+                            </div>
+                            <p class="text-green-600 font-medium">All systems operational</p>
+                            <p class="text-gray-500 text-sm mt-1">No issues detected</p>
+                        </div>
+                    `;
+                    alertCountBadge.classList.add('hidden');
+                    return;
+                }
+                
+                alertCountBadge.textContent = issues.length;
+                alertCountBadge.classList.remove('hidden');
+                
+                issues.forEach(issue => {
+                    const issueElement = this.createIssueElement(issue);
+                    container.appendChild(issueElement);
+                });
+            }
+
+            collectIssues() {
+                const issues = [];
+                
+                // Check simulation errors
+                if (this.metrics.simulate_errors_total) {
+                    this.metrics.simulate_errors_total.forEach(error => {
+                        if (error.value > 0) {
+                            issues.push({
+                                type: 'Simulation Error',
+                                description: error.labels.error_description || 'Unknown error',
+                                chain: this.extractChainFromAccount(error.labels.account),
+                                severity: 'critical',
+                                value: error.value
+                            });
+                        }
+                    });
+                }
+                
+                // Check WebSocket reconnects
+                if (this.metrics.ws_reconnect_total) {
+                    this.metrics.ws_reconnect_total.forEach(reconnect => {
+                        if (reconnect.value > 2) {
+                            issues.push({
+                                type: 'WebSocket Issues',
+                                description: `${reconnect.value} reconnections detected`,
+                                chain: reconnect.labels.chain,
+                                severity: 'warning',
+                                value: reconnect.value
+                            });
+                        }
+                    });
+                }
+                
+                // Check pending packets
+                const pendingPackets = this.calculatePendingPackets();
+                if (pendingPackets >= this.config.pendingCritical) {
+                    issues.push({
+                        type: 'High Pending Packets',
+                        description: `${pendingPackets} packets pending (critical threshold: ${this.config.pendingCritical})`,
+                        chain: 'all',
+                        severity: 'critical',
+                        value: pendingPackets
+                    });
+                } else if (pendingPackets >= this.config.pendingWarning) {
+                    issues.push({
+                        type: 'Moderate Pending Packets',
+                        description: `${pendingPackets} packets pending (warning threshold: ${this.config.pendingWarning})`,
+                        chain: 'all',
+                        severity: 'warning',
+                        value: pendingPackets
+                    });
+                }
+                
+                // Check failed packets
+                const failedPackets = this.calculateFailedPackets();
+                if (failedPackets >= this.config.failedAlert) {
+                    issues.push({
+                        type: 'Failed Packets',
+                        description: `${failedPackets} packets failed`,
+                        chain: 'all',
+                        severity: 'critical',
+                        value: failedPackets
+                    });
+                }
+                
+                return issues;
+            }
+
+            extractChainFromAccount(account) {
+                if (!account) return 'unknown';
+                if (account.startsWith('osmo')) return 'osmosis-1';
+                if (account.startsWith('plq')) return 'planq_7070-2';
+                if (account.startsWith('atone')) return 'atomone-1';
+                if (account.startsWith('gitopia')) return 'gitopia';
+                if (account.startsWith('dora')) return 'vota-ash';
+                return 'unknown';
+            }
+
+            createIssueElement(issue) {
+                const div = document.createElement('div');
+                div.className = `flex items-center justify-between p-3 rounded-lg border-l-4 slide-up ${
+                    issue.severity === 'critical' 
+                        ? 'bg-red-50 border-red-400' 
+                        : 'bg-yellow-50 border-yellow-400'
+                }`;
+                
+                const info = document.createElement('div');
+                info.className = 'flex-1';
+                
+                const title = document.createElement('div');
+                title.className = `font-medium ${
+                    issue.severity === 'critical' ? 'text-red-900' : 'text-yellow-900'
+                }`;
+                title.textContent = `${issue.type} - ${issue.chain}`;
+                
+                const description = document.createElement('div');
+                description.className = `text-sm ${
+                    issue.severity === 'critical' ? 'text-red-700' : 'text-yellow-700'
+                }`;
+                description.textContent = issue.description;
+                
+                info.appendChild(title);
+                info.appendChild(description);
+                
+                const badge = document.createElement('span');
+                badge.className = `px-2 py-1 text-xs font-medium rounded ${
+                    issue.severity === 'critical' 
+                        ? 'bg-red-100 text-red-800' 
+                        : 'bg-yellow-100 text-yellow-800'
+                }`;
+                badge.textContent = issue.severity === 'critical' ? 'Critical' : 'Warning';
+                
+                div.appendChild(info);
+                div.appendChild(badge);
+                
+                return div;
+            }
+
+            updateWalletBalances() {
+                const container = document.getElementById('wallet-balances');
+                container.innerHTML = '';
+                
+                if (!this.metrics.wallet_balance) {
+                    container.innerHTML = '<div class="col-span-full text-center text-gray-500 py-8">No wallet data available</div>';
+                    return;
+                }
+                
+                this.metrics.wallet_balance.forEach(wallet => {
+                    const walletElement = this.createWalletElement(wallet);
+                    container.appendChild(walletElement);
+                });
+            }
+
+            createWalletElement(wallet) {
+                const div = document.createElement('div');
+                div.className = 'bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors slide-up';
+                
+                const header = document.createElement('div');
+                header.className = 'flex items-center justify-between mb-2';
+                
+                const chainName = document.createElement('div');
+                chainName.className = 'font-medium text-gray-900';
+                chainName.textContent = wallet.labels.chain;
+                
+                const balance = document.createElement('div');
+                balance.className = 'text-lg font-bold text-green-600';
+                balance.textContent = this.formatBalance(wallet.value, wallet.labels.denom);
+                
+                header.appendChild(chainName);
+                header.appendChild(balance);
+                
+                const details = document.createElement('div');
+                details.className = 'text-xs text-gray-600';
+                details.innerHTML = `
+                    <div>Denom: <span class="font-mono">${wallet.labels.denom}</span></div>
+                    <div class="mt-1">Account: <span class="font-mono text-xs">${wallet.labels.account}</span></div>
+                `;
+                
+                div.appendChild(header);
+                div.appendChild(details);
+                
+                return div;
+            }
+
+            formatBalance(value, denom) {
+                if (value > 1e18) {
+                    return (value / 1e18).toFixed(2) + 'E';
+                } else if (value > 1e15) {
+                    return (value / 1e15).toFixed(2) + 'P';
+                } else if (value > 1e12) {
+                    return (value / 1e12).toFixed(2) + 'T';
+                } else if (value > 1e9) {
+                    return (value / 1e9).toFixed(2) + 'B';
+                } else if (value > 1e6) {
+                    return (value / 1e6).toFixed(2) + 'M';
+                } else if (value > 1e3) {
+                    return (value / 1e3).toFixed(2) + 'K';
+                }
+                return Math.floor(value).toLocaleString();
+            }
+
+            async checkAlerts() {
+                if (!this.config.gotifyEnabled || !this.config.gotifyUrl || !this.config.gotifyToken) {
+                    return;
+                }
+                
+                const issues = this.collectIssues();
+                const currentAlertKeys = new Set();
+                
+                for (const issue of issues) {
+                    const alertKey = `${issue.type}-${issue.chain}-${issue.severity}`;
+                    currentAlertKeys.add(alertKey);
+                    
+                    // Only send alert if it's new
+                    if (!this.lastAlerts.has(alertKey)) {
+                        await this.sendGotifyAlert(issue);
+                        this.showToastAlert(issue);
+                    }
+                }
+                
+                this.lastAlerts = currentAlertKeys;
+            }
+
+            async sendGotifyAlert(issue) {
+                try {
+                    const title = `IBC Hermes Alert: ${issue.type}`;
+                    const message = `Chain: ${issue.chain}\nSeverity: ${issue.severity}\nDetails: ${issue.description}`;
+                    const priority = issue.severity === 'critical' ? 8 : 5;
+                    
+                    const response = await fetch(`${this.config.gotifyUrl}/message`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Gotify-Key': this.config.gotifyToken
+                        },
+                        body: JSON.stringify({
+                            title: title,
+                            message: message,
+                            priority: priority
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        console.error('Failed to send Gotify alert:', response.statusText);
+                    }
+                } catch (error) {
+                    console.error('Error sending Gotify alert:', error);
+                }
+            }
+
+            showToastAlert(issue) {
+                const toast = document.getElementById('alert-toast');
+                const title = document.getElementById('alert-title');
+                const message = document.getElementById('alert-message');
+                
+                title.textContent = `${issue.type} - ${issue.chain}`;
+                message.textContent = issue.description;
+                
+                toast.style.transform = 'translateY(0)';
+                
+                setTimeout(() => {
+                    toast.style.transform = 'translateY(100%)';
+                }, 5000);
+            }
+
+            showToast(title, message) {
+                const toast = document.getElementById('alert-toast');
+                const titleEl = document.getElementById('alert-title');
+                const messageEl = document.getElementById('alert-message');
+                
+                toast.className = toast.className.replace('border-red-400', 'border-green-400');
+                titleEl.textContent = title;
+                messageEl.textContent = message;
+                
+                toast.style.transform = 'translateY(0)';
+                
+                setTimeout(() => {
+                    toast.style.transform = 'translateY(100%)';
+                    setTimeout(() => {
+                        toast.className = toast.className.replace('border-green-400', 'border-red-400');
+                    }, 300);
+                }, 3000);
+            }
+
+            updateConnectionStatus(connected, error = '') {
+                const status = document.getElementById('connection-status');
+                const text = document.getElementById('connection-text');
+                
+                if (connected) {
+                    status.className = 'w-3 h-3 rounded-full bg-green-500 pulse-green';
+                    text.textContent = 'Connected';
+                    text.className = 'text-sm text-green-600';
+                } else {
+                    status.className = 'w-3 h-3 rounded-full bg-red-500';
+                    text.textContent = 'Disconnected';
+                    text.className = 'text-sm text-red-600';
+                    if (error) {
+                        text.title = error;
+                    }
+                }
+            }
+
+            updateLastUpdate() {
+                document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+            }
+
+            showError(message) {
+                console.error(message);
+                this.showToastAlert({
+                    type: 'Connection Error',
+                    chain: 'system',
+                    description: message
+                });
+            }
+        }
+
+        // Initialize monitor when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new HermesRealTimeMonitor();
+        });
+    </script>
+</body>
+</html>
