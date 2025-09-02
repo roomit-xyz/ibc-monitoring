@@ -87,11 +87,18 @@ router.get('/balances/live-chains', async (req, res) => {
           chainMap[wb.chain_id] = {
             chainId: wb.chain_id,
             chainName: wb.chain_name,
-            walletCount: 0
+            walletAddresses: new Set() // Track unique wallet addresses
           };
         }
-        chainMap[wb.chain_id].walletCount++;
+        // Add wallet address to set (automatically handles uniqueness)
+        chainMap[wb.chain_id].walletAddresses.add(wb.address);
       }
+    });
+    
+    // Convert sets to counts
+    Object.keys(chainMap).forEach(chainId => {
+      chainMap[chainId].walletCount = chainMap[chainId].walletAddresses.size;
+      delete chainMap[chainId].walletAddresses; // Clean up the set
     });
     
     const liveChains = Object.values(chainMap);

@@ -622,11 +622,15 @@ class IBCDashboard {
 
     createWalletSummaryCard(chain) {
         const card = document.createElement('div');
-        card.className = 'bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200';
+        card.className = 'bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200 relative cursor-pointer hover:shadow-md transition-shadow duration-200';
         
         // Show active status since we only show chains with balances
         const statusColor = 'text-green-600';
         const statusIcon = '🟢';
+
+        // Find wallet balances for this chain
+        const chainBalances = this.detailedBalances ? 
+            this.detailedBalances.find(c => c.chain === chain.chain_id) : null;
 
         card.innerHTML = `
             <div class="flex items-center justify-between mb-2">
@@ -649,7 +653,68 @@ class IBCDashboard {
             </div>
         `;
 
+        // Create and add tooltip
+        if (chainBalances && chainBalances.wallets && chainBalances.wallets.length > 0) {
+            this.addWalletTooltip(card, chainBalances);
+        }
+
         return card;
+    }
+
+    addWalletTooltip(card, chainData) {
+        const tooltip = document.createElement('div');
+        tooltip.className = 'absolute z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 max-w-sm hidden';
+        tooltip.style.top = '100%';
+        tooltip.style.left = '0';
+        tooltip.style.marginTop = '8px';
+
+        // Group wallets by address to avoid duplicates
+        const walletGroups = {};
+        chainData.wallets.forEach(wallet => {
+            if (!walletGroups[wallet.address]) {
+                walletGroups[wallet.address] = [];
+            }
+            walletGroups[wallet.address].push(wallet);
+        });
+
+        let tooltipContent = `
+            <div class="font-medium text-gray-900 mb-2">${this.escapeHtml(chainData.chainName)} Wallets</div>
+        `;
+
+        Object.keys(walletGroups).forEach(address => {
+            const walletBalances = walletGroups[address];
+            tooltipContent += `
+                <div class="mb-3 pb-2 border-b border-gray-100 last:border-b-0">
+                    <div class="text-xs font-mono text-gray-600 mb-1">
+                        ${address.substring(0, 12)}...${address.substring(address.length - 6)}
+                    </div>
+            `;
+            
+            walletBalances.forEach(wallet => {
+                tooltipContent += `
+                    <div class="flex justify-between items-center text-sm">
+                        <span class="text-gray-700">${this.escapeHtml(wallet.symbol || wallet.denom)}</span>
+                        <span class="font-medium text-blue-600">
+                            ${wallet.balance.toLocaleString('en-US', {maximumFractionDigits: 6})}
+                        </span>
+                    </div>
+                `;
+            });
+            
+            tooltipContent += `</div>`;
+        });
+
+        tooltip.innerHTML = tooltipContent;
+        card.appendChild(tooltip);
+
+        // Add hover event listeners
+        card.addEventListener('mouseenter', () => {
+            tooltip.classList.remove('hidden');
+        });
+
+        card.addEventListener('mouseleave', () => {
+            tooltip.classList.add('hidden');
+        });
     }
 
     updateDetailedWalletView() {

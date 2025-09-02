@@ -52,6 +52,7 @@ This document summarizes the comprehensive fixes applied to the wallet balance m
 - **Reliable Data Source**: APIs now use `db.getWalletBalances()` for consistent data retrieval
 - **Enhanced API Logging**: Added debug logging to trace data flow through API endpoints
 - **Data Format Compatibility**: Ensured database format matches frontend expectations
+- **Correct Wallet Counting**: Fixed wallet count to show unique addresses per chain, not balance entries
 
 **Files Modified**:
 - `src/routes/wallets.js` (lines 78-109, 186-222)
