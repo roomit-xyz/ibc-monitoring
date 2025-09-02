@@ -17,6 +17,7 @@ class WalletBalanceService {
     this.maxBackoffInterval = 300; // 5 minutes max backoff
     this.requestTimeout = 10000; // 10 seconds
     this.rateLimitDelay = 1000; // 1 second between API calls
+    this.isCollecting = false; // Prevent concurrent collections
   }
 
   async start() {
@@ -29,8 +30,18 @@ class WalletBalanceService {
     this.startTime = Date.now();
     logger.info('Starting wallet balance service...');
 
-    // Initial collection
-    await this.collectAndProcessBalances();
+    // Wait for metrics endpoint to be ready (graceful startup)
+    const isReady = await this.waitForMetricsEndpoint();
+    if (!isReady) {
+      logger.warn('Metrics endpoint not ready, starting with periodic checks only');
+    } else {
+      // Initial collection only if endpoint is ready
+      try {
+        await this.collectAndProcessBalances();
+      } catch (error) {
+        logger.warn('Initial collection failed, continuing with periodic checks:', error.message);
+      }
+    }
 
     // Set up periodic collection
     this.intervalId = setInterval(async () => {
@@ -53,7 +64,42 @@ class WalletBalanceService {
     logger.info('Wallet balance service stopped');
   }
 
+  async waitForMetricsEndpoint(maxWaitTime = 30000, checkInterval = 2000) {
+    logger.info(`Waiting for metrics endpoint to be ready: ${this.metricsEndpoint}`);
+    const startTime = Date.now();
+    
+    while (Date.now() - startTime < maxWaitTime) {
+      try {
+        const axios = require('axios');
+        await axios.get(this.metricsEndpoint, {
+          timeout: 5000,
+          validateStatus: (status) => status === 200
+        });
+        
+        logger.info('✅ Metrics endpoint is ready');
+        return true;
+        
+      } catch (error) {
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        logger.debug(`Metrics endpoint not ready (${elapsed}s): ${error.message}`);
+        
+        // Wait before next check
+        await this.sleep(checkInterval);
+      }
+    }
+    
+    logger.warn(`❌ Metrics endpoint not ready after ${maxWaitTime/1000}s, proceeding anyway`);
+    return false;
+  }
+
   async collectAndProcessBalances() {
+    // Prevent concurrent collections
+    if (this.isCollecting) {
+      logger.debug('Collection already in progress, skipping concurrent request');
+      return [];
+    }
+    
+    this.isCollecting = true;
     const startTime = Date.now();
     let retryCount = 0;
     
@@ -106,6 +152,7 @@ class WalletBalanceService {
 
         this.resetErrorCount();
         this.lastSuccessfulFetch = new Date();
+        this.isCollecting = false;
         return processedBalances;
 
       } catch (error) {
@@ -151,6 +198,7 @@ class WalletBalanceService {
       circuitBreakerOpen: this.isCircuitBreakerOpen()
     });
     
+    this.isCollecting = false;
     return [];
   }
 
