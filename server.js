@@ -38,6 +38,7 @@ const { setupWebSocket } = require('./src/services/websocket');
 const { startMetricsCollection } = require('./src/services/metricsCollector');
 const { initializeAlerts } = require('./src/services/alertManager');
 const { startWalletMonitoring } = require('./src/services/walletMonitor');
+const { startWalletBalanceService } = require('./src/services/walletBalanceService');
 
 const app = express();
 const server = http.createServer(app);
@@ -212,6 +213,11 @@ async function initializeApp() {
     // Start wallet monitoring
     await startWalletMonitoring(db, wss);
     logger.info('Wallet monitoring system initialized');
+
+    // Start enhanced wallet balance service
+    const walletBalanceService = await startWalletBalanceService(db, wss);
+    app.set('walletBalanceService', walletBalanceService);
+    logger.info('Enhanced wallet balance service initialized');
 
     // Setup cleanup cron jobs
     const cleanupInterval = parseInt(process.env.CLEANUP_INTERVAL_HOURS) || 24;

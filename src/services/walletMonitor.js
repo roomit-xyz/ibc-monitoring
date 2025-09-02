@@ -43,12 +43,143 @@ class WalletMonitor {
     logger.info('Wallet balance monitoring service stopped');
   }
 
+  async collectFromMetricsEndpoint() {
+    try {
+      const metricsUrl = process.env.METRICS_ENDPOINT || 'http://localhost:4001/metrics';
+      logger.debug(`Fetching wallet balances from metrics endpoint: ${metricsUrl}`);
+
+      const response = await axios.get(metricsUrl, {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'IBC-Monitor-WalletBalance/1.0'
+        }
+      });
+
+      const balances = this.parseWalletBalanceMetrics(response.data);
+      
+      if (balances.length === 0) {
+        logger.debug('No wallet balance metrics found');
+        return false;
+      }
+
+      logger.info(`Found ${balances.length} wallet balance metrics`);
+
+      // Process each balance
+      for (const balance of balances) {
+        try {
+          await this.processMetricsBalance(balance);
+        } catch (error) {
+          logger.error(`Failed to process metrics balance for ${balance.account}:`, error.message);
+        }
+      }
+
+      return true;
+
+    } catch (error) {
+      logger.warn('Failed to collect from metrics endpoint:', error.message);
+      return false;
+    }
+  }
+
+  parseWalletBalanceMetrics(metricsText) {
+    const balances = [];
+    const lines = metricsText.split('\n');
+    
+    for (const line of lines) {
+      const walletBalanceMatch = line.match(/^wallet_balance\{account="([^"]+)",chain="([^"]+)",denom="([^"]+)",otel_scope_name="([^"]+)"\}\s+(\d+(?:\.\d+)?)/);
+      
+      if (walletBalanceMatch) {
+        const [, account, chain, denom, scope, value] = walletBalanceMatch;
+        
+        balances.push({
+          account,
+          chain,
+          denom,
+          rawValue: value,
+          scope,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
+    return balances;
+  }
+
+  async processMetricsBalance(balance) {
+    try {
+      // Find or create wallet
+      let walletId = await this.findOrCreateWallet(balance.account, balance.chain);
+      
+      // Get proper decimals and convert
+      const decimals = await this.getTokenDecimals(balance.denom, balance.chain);
+      const humanReadableBalance = parseFloat(balance.rawValue) / Math.pow(10, decimals);
+      
+      // Update balance in database
+      const result = await this.db.updateWalletBalance(walletId, balance.denom, humanReadableBalance);
+      
+      if (Math.abs(result.changeAmount) > 0.000001) {
+        logger.debug(`Balance updated from metrics for ${balance.chain} ${balance.denom}: ${result.oldBalance} → ${result.newBalance}`);
+        
+        // Broadcast balance update via WebSocket
+        this.broadcastBalanceUpdate({
+          id: walletId,
+          chain_id: balance.chain,
+          chain_name: this.getChainDisplayName(balance.chain),
+          address: balance.account
+        }, balance.denom, result);
+      }
+
+    } catch (error) {
+      logger.error(`Error processing metrics balance for ${balance.account}:`, error);
+    }
+  }
+
+  async findOrCreateWallet(address, chainId) {
+    try {
+      // First try to find existing wallet
+      const existing = await this.db.get(`
+        SELECT id FROM wallet_addresses 
+        WHERE address = ? AND chain_id = ?
+      `, [address, chainId]);
+      
+      if (existing) {
+        return existing.id;
+      }
+
+      // Create new wallet entry
+      const walletId = await this.db.createWalletAddress({
+        chainId: chainId,
+        chainName: this.getChainDisplayName(chainId),
+        address: address,
+        addressType: 'relayer'
+      });
+
+      logger.info(`Created new wallet entry from metrics: ${address} on ${chainId}`);
+      return walletId;
+
+    } catch (error) {
+      logger.error(`Error finding/creating wallet for ${address}:`, error);
+      throw error;
+    }
+  }
+
+  getChainDisplayName(chainId) {
+    const chainNames = {
+      'osmosis-1': 'Osmosis',
+      'planq_7070-2': 'Planq',
+      'gitopia': 'Gitopia',
+      'atomone-1': 'AtomOne',
+      'vota-ash': 'Dora Vota'
+    };
+    return chainNames[chainId] || chainId;
+  }
+
   async collectAllBalances() {
     try {
       // First, try to get wallet data from metrics endpoint
-      await this.collectFromMetricsEndpoint();
+      const metricsSuccess = await this.collectFromMetricsEndpoint();
       
-      // Fallback to direct API calls if needed
+      // Fallback to direct API calls if metrics failed
       const wallets = await this.db.getWalletAddresses();
       logger.debug(`Monitoring ${wallets.length} registered wallet addresses`);
 
@@ -152,7 +283,8 @@ class WalletMonitor {
     // Update balances in database
     let updatedCount = 0;
     for (const balance of balances) {
-      const amount = parseFloat(balance.amount) / Math.pow(10, this.getTokenDecimals(balance.denom));
+      const decimals = await this.getTokenDecimals(balance.denom, wallet.chain_id);
+      const amount = parseFloat(balance.amount) / Math.pow(10, decimals);
       
       const result = await this.db.updateWalletBalance(id, balance.denom, amount);
       
@@ -206,21 +338,57 @@ class WalletMonitor {
     return alternatives;
   }
 
-  getTokenDecimals(denom) {
-    // Common token decimals
-    const decimals = {
+  async getTokenDecimals(denom, chainId = null) {
+    try {
+      // First check database for cached decimals
+      if (chainId) {
+        const result = await this.db.get(`
+          SELECT decimals FROM token_decimals 
+          WHERE chain_id = ? AND denom = ?
+        `, [chainId, denom]);
+        
+        if (result) {
+          return result.decimals;
+        }
+      }
+      
+      // Fall back to hardcoded values
+      return this.getFallbackDecimals(denom);
+    } catch (error) {
+      logger.debug(`Error getting decimals for ${denom}:`, error.message);
+      return this.getFallbackDecimals(denom);
+    }
+  }
+
+  getFallbackDecimals(denom) {
+    const fallbackDecimals = {
+      // Your specific tokens
+      'uphoton': 6,   // atomone-1
+      'peaka': 18,    // vota-ash
+      'ulore': 6,     // gitopia
+      'uosmo': 6,     // osmosis-1
+      'aplanq': 18,   // planq_7070-2
+      
+      // Common Cosmos tokens
       'uatom': 6,
-      'uosmo': 6,
       'ujuno': 6,
       'ustars': 6,
       'uakt': 6,
       'uluna': 6,
       'uusd': 6,
-      'ukrw': 6
+      'ukrw': 6,
+      'uion': 6,
+      'ustrd': 6,
+      'uhuahua': 6,
+      'ucmdx': 6
     };
 
-    // Default to 6 decimals for most cosmos tokens
-    return decimals[denom] || 6;
+    // Default to 6 decimals for most Cosmos tokens, 18 for EVM-based chains
+    if (denom.startsWith('a') && !denom.startsWith('au')) {
+      return fallbackDecimals[denom] || 18;
+    }
+    
+    return fallbackDecimals[denom] || 6;
   }
 
   async checkLowBalanceAlerts() {
@@ -293,97 +461,14 @@ class WalletMonitor {
     }
   }
 
-  async updateTokenPrices() {
-    try {
-      // Get unique denoms from wallet_balances
-      const denoms = await this.db.all(`
-        SELECT DISTINCT denom FROM wallet_balances 
-        WHERE balance > 0
-      `);
-
-      // Update prices from CoinGecko or similar service
-      for (const { denom } of denoms) {
-        try {
-          const priceData = await this.fetchTokenPrice(denom);
-          if (priceData) {
-            await this.db.updateTokenPrice(denom, priceData);
-            logger.debug(`Updated price for ${denom}: $${priceData.priceUsd}`);
-          }
-        } catch (error) {
-          logger.debug(`Failed to update price for ${denom}: ${error.message}`);
-        }
-      }
-    } catch (error) {
-      logger.error('Error updating token prices:', error);
-    }
-  }
-
-  async fetchTokenPrice(denom) {
-    // Map common denoms to CoinGecko IDs
-    const coinGeckoIds = {
-      'uatom': 'cosmos',
-      'uosmo': 'osmosis',
-      'ujuno': 'juno-network',
-      'ustars': 'stargaze',
-      'uakt': 'akash-network'
-    };
-
-    const coinId = coinGeckoIds[denom];
-    if (!coinId) {
-      return null; // Skip unknown tokens
-    }
-
-    try {
-      const response = await axios.get(
-        `https://api.coingecko.com/api/v3/simple/price`,
-        {
-          params: {
-            ids: coinId,
-            vs_currencies: 'usd',
-            include_market_cap: 'true',
-            include_24hr_vol: 'true',
-            include_24hr_change: 'true'
-          },
-          timeout: 10000
-        }
-      );
-
-      const data = response.data[coinId];
-      if (data) {
-        return {
-          symbol: denom.replace('u', '').toUpperCase(),
-          name: coinId.charAt(0).toUpperCase() + coinId.slice(1),
-          priceUsd: data.usd,
-          marketCapUsd: data.usd_market_cap,
-          volume24hUsd: data.usd_24h_vol,
-          change24h: data.usd_24h_change
-        };
-      }
-    } catch (error) {
-      logger.debug(`CoinGecko API error for ${coinId}: ${error.message}`);
-    }
-
-    return null;
-  }
+  // Removed CoinGecko price functionality - focusing on wallet balances only
 }
 
 async function startWalletMonitoring(database, websocketService) {
   const monitor = new WalletMonitor(database, websocketService);
   
-  // Update token prices first
-  await monitor.updateTokenPrices();
-  
   // Start monitoring
   await monitor.start();
-  
-  // Update prices periodically (every hour)
-  setInterval(async () => {
-    try {
-      await monitor.updateTokenPrices();
-    } catch (error) {
-      logger.error('Price update error:', error);
-    }
-  }, 60 * 60 * 1000); // 1 hour
 
   return monitor;
 }

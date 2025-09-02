@@ -73,6 +73,58 @@ router.post('/addresses', requireRole('admin'), async (req, res) => {
   }
 });
 
+// Get wallet balance service health status
+router.get('/balances/health', async (req, res) => {
+  try {
+    const walletBalanceService = req.app.get('walletBalanceService');
+    if (!walletBalanceService) {
+      return res.status(503).json({ 
+        status: 'unavailable',
+        error: 'Wallet balance service not available' 
+      });
+    }
+
+    const healthStatus = walletBalanceService.getHealthStatus();
+    const httpStatus = healthStatus.status === 'healthy' ? 200 : 503;
+
+    res.status(httpStatus).json({
+      success: healthStatus.status === 'healthy',
+      ...healthStatus,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Get wallet balance health error:', error);
+    res.status(500).json({ 
+      status: 'error',
+      error: 'Failed to retrieve health status' 
+    });
+  }
+});
+
+// Get formatted wallet balances from metrics
+router.get('/balances/formatted', async (req, res) => {
+  try {
+    const { chainId } = req.query;
+    
+    // Use the wallet balance service to get formatted balances
+    const walletBalanceService = req.app.get('walletBalanceService');
+    if (!walletBalanceService) {
+      return res.status(503).json({ error: 'Wallet balance service not available' });
+    }
+
+    const formattedBalances = await walletBalanceService.getFormattedBalances(chainId);
+
+    res.json({
+      success: true,
+      balances: formattedBalances,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Get formatted wallet balances error:', error);
+    res.status(500).json({ error: 'Failed to retrieve formatted wallet balances' });
+  }
+});
+
 // Get wallet balances
 router.get('/balances', async (req, res) => {
   try {
