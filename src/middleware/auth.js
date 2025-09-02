@@ -287,7 +287,7 @@ const determineUserRoleFromGroups = (client, userDN, userAttributes) => {
         logger.debug(`User ${username} memberOf groups:`, groups);
         
         // Check for admin groups first (trim whitespace)
-        for (const adminGroup of adminGroups.map(g => g.trim())) {
+        for (const adminGroup of (adminGroups || []).map(g => g.trim())) {
           if (groups.some(group => {
             const groupLower = group.toLowerCase();
             const adminGroupLower = adminGroup.toLowerCase();
@@ -299,7 +299,7 @@ const determineUserRoleFromGroups = (client, userDN, userAttributes) => {
         }
         
         // Check for monitoring groups (trim whitespace)
-        for (const monitoringGroup of monitoringGroups.map(g => g.trim())) {
+        for (const monitoringGroup of (monitoringGroups || []).map(g => g.trim())) {
           if (groups.some(group => {
             const groupLower = group.toLowerCase();
             const monitoringGroupLower = monitoringGroup.toLowerCase();
@@ -314,7 +314,7 @@ const determineUserRoleFromGroups = (client, userDN, userAttributes) => {
       }
 
       // If memberOf is not available, search for group membership
-      const allGroups = [...adminGroups, ...monitoringGroups];
+      const allGroups = [...(adminGroups || []), ...(monitoringGroups || [])];
       let groupsChecked = 0;
       let roleFound = null;
 
