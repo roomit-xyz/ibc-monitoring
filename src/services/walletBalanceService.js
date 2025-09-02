@@ -40,7 +40,10 @@ class WalletBalanceService {
     logger.info('Starting wallet balance service...');
 
     // Initialize database tables first
-    await this.initializeDatabaseTables();
+    const tablesInitialized = await this.initializeDatabaseTables();
+    if (!tablesInitialized) {
+      logger.warn('Database tables initialization failed, some features may not work properly');
+    }
 
     // Wait for metrics endpoint to be ready (graceful startup)
     const isReady = await this.waitForMetricsEndpoint();
@@ -79,12 +82,14 @@ class WalletBalanceService {
   async initializeDatabaseTables() {
     try {
       if (!this.db || !this.db.run) {
-        logger.debug('Database not available, skipping table initialization');
-        return;
+        logger.warn('Database not available, skipping table initialization');
+        return false;
       }
 
+      logger.info('Initializing database tables for wallet balance service...');
+      
       // Create token_decimals table
-      await this.db.run(`
+      const createTableResult = await this.db.run(`
         CREATE TABLE IF NOT EXISTS token_decimals (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           chain_id TEXT NOT NULL,
@@ -95,10 +100,24 @@ class WalletBalanceService {
           UNIQUE(chain_id, denom)
         )
       `);
-
-      logger.debug('Database tables initialized for wallet balance service');
+      
+      logger.info('✅ token_decimals table created/verified successfully');
+      
+      // Verify table exists by querying its schema
+      const tableInfo = await this.db.all(`PRAGMA table_info(token_decimals)`);
+      logger.debug(`token_decimals table has ${tableInfo.length} columns:`, 
+        tableInfo.map(col => col.name).join(', '));
+      
+      // Test table access
+      const testQuery = await this.db.get(`SELECT COUNT(*) as count FROM token_decimals`);
+      logger.info(`token_decimals table is accessible with ${testQuery.count} existing records`);
+      
+      return true;
+      
     } catch (error) {
-      logger.debug('Error initializing database tables:', error.message);
+      logger.error('❌ Failed to initialize database tables:', error.message);
+      logger.error('Error details:', error.stack);
+      return false;
     }
   }
 
