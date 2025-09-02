@@ -318,19 +318,15 @@ class WalletBalanceService {
 
   async getDecimalsFromDatabase(chainId, denom) {
     try {
-      if (!this.db || !this.db.get) {
+      if (!this.db || !this.db.getTokenDecimals) {
         logger.debug('Database not available for decimals lookup');
         return null;
       }
 
-      const result = await this.db.get(`
-        SELECT decimals FROM token_decimals 
-        WHERE chain_id = ? AND denom = ?
-      `, [chainId, denom]);
-      
-      return result ? result.decimals : null;
+      const decimals = await this.db.getTokenDecimals(chainId, denom);
+      return decimals;
     } catch (error) {
-      logger.debug('Error getting decimals from database (table may not exist yet):', error.message);
+      logger.debug('Error getting decimals from database:', error.message);
       return null;
     }
   }

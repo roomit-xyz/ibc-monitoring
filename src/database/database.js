@@ -490,6 +490,26 @@ class Database {
     `, [defaultThreshold]);
   }
 
+  // Token decimals management
+  async getTokenDecimals(chainId, denom) {
+    const result = await this.get(
+      'SELECT decimals FROM token_decimals WHERE chain_id = ? AND denom = ?',
+      [chainId, denom]
+    );
+    return result ? result.decimals : null;
+  }
+
+  async saveTokenDecimals(chainId, denom, decimals) {
+    await this.run(`
+      INSERT OR REPLACE INTO token_decimals (chain_id, denom, decimals, updated_at)
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    `, [chainId, denom, decimals]);
+  }
+
+  async getAllTokenDecimals() {
+    return await this.all('SELECT * FROM token_decimals ORDER BY chain_id, denom');
+  }
+
   // Cleanup methods
   async cleanup() {
     const retentionDays = parseInt(process.env.METRICS_RETENTION_DAYS) || 30;
