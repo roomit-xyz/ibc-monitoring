@@ -73,6 +73,87 @@ router.post('/addresses', requireRole('admin'), async (req, res) => {
   }
 });
 
+// Get live chains from metrics (only chains with active wallet balances)
+router.get('/balances/live-chains', async (req, res) => {
+  try {
+    const walletBalanceService = req.app.get('walletBalanceService');
+    if (!walletBalanceService) {
+      return res.status(503).json({ error: 'Wallet balance service not available' });
+    }
+
+    // Get fresh data from metrics
+    const balances = await walletBalanceService.collectAndProcessBalances();
+    
+    // Get unique chains from metrics
+    const liveChains = [...new Set(balances.map(b => b.chain))].map(chainId => {
+      const chainData = balances.find(b => b.chain === chainId);
+      return {
+        chainId: chainData.chain,
+        chainName: chainData.chainName,
+        walletCount: balances.filter(b => b.chain === chainId).length
+      };
+    });
+
+    res.json({
+      success: true,
+      chains: liveChains,
+      totalChains: liveChains.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Get live chains error:', error);
+    res.status(500).json({ error: 'Failed to retrieve live chains' });
+  }
+});
+
+// Clean old wallet data not in metrics (admin only)
+router.post('/balances/cleanup', requireRole('admin'), async (req, res) => {
+  try {
+    const walletBalanceService = req.app.get('walletBalanceService');
+    if (!walletBalanceService) {
+      return res.status(503).json({ error: 'Wallet balance service not available' });
+    }
+
+    // Get current chains from metrics
+    const balances = await walletBalanceService.collectAndProcessBalances();
+    const activeChainsFromMetrics = [...new Set(balances.map(b => b.chain))];
+
+    if (activeChainsFromMetrics.length === 0) {
+      return res.status(400).json({ error: 'No active chains found in metrics' });
+    }
+
+    // Delete wallet addresses not in metrics
+    const placeholders = activeChainsFromMetrics.map(() => '?').join(',');
+    const deleteResult = await db.run(`
+      DELETE FROM wallet_addresses 
+      WHERE chain_id NOT IN (${placeholders})
+    `, activeChainsFromMetrics);
+
+    // Delete wallet balances for non-existent chains
+    const balanceDeleteResult = await db.run(`
+      DELETE FROM wallet_balances 
+      WHERE wallet_id NOT IN (
+        SELECT id FROM wallet_addresses
+      )
+    `);
+
+    logger.info(`Cleanup completed by user ${req.user.username}: ${deleteResult.changes} addresses, ${balanceDeleteResult.changes} balances removed`);
+
+    res.json({
+      success: true,
+      message: 'Cleanup completed successfully',
+      removed: {
+        walletAddresses: deleteResult.changes || 0,
+        walletBalances: balanceDeleteResult.changes || 0
+      },
+      activeChainsInMetrics: activeChainsFromMetrics
+    });
+  } catch (error) {
+    logger.error('Cleanup wallet data error:', error);
+    res.status(500).json({ error: 'Failed to cleanup wallet data' });
+  }
+});
+
 // Get wallet balance service health status
 router.get('/balances/health', async (req, res) => {
   try {
@@ -101,7 +182,7 @@ router.get('/balances/health', async (req, res) => {
   }
 });
 
-// Get formatted wallet balances from metrics
+// Get formatted wallet balances from metrics (live data only)
 router.get('/balances/formatted', async (req, res) => {
   try {
     const { chainId } = req.query;
@@ -112,11 +193,43 @@ router.get('/balances/formatted', async (req, res) => {
       return res.status(503).json({ error: 'Wallet balance service not available' });
     }
 
-    const formattedBalances = await walletBalanceService.getFormattedBalances(chainId);
+    // Get fresh data from metrics endpoint
+    const formattedBalances = await walletBalanceService.collectAndProcessBalances();
+    
+    // Filter by chainId if provided
+    const filteredBalances = chainId 
+      ? formattedBalances.filter(b => b.chain === chainId)
+      : formattedBalances;
+
+    // Group by chain for better display
+    const groupedBalances = filteredBalances.reduce((acc, balance) => {
+      const chainKey = balance.chain;
+      if (!acc[chainKey]) {
+        acc[chainKey] = {
+          chain: balance.chain,
+          chainName: balance.chainName,
+          wallets: []
+        };
+      }
+      
+      acc[chainKey].wallets.push({
+        address: balance.account,
+        denom: balance.denom,
+        symbol: balance.symbol,
+        rawBalance: balance.rawBalance,
+        balance: balance.balance,
+        decimals: balance.decimals,
+        timestamp: balance.timestamp
+      });
+      
+      return acc;
+    }, {});
 
     res.json({
       success: true,
-      balances: formattedBalances,
+      chains: Object.values(groupedBalances),
+      totalChains: Object.keys(groupedBalances).length,
+      totalWallets: formattedBalances.length,
       timestamp: new Date().toISOString()
     });
   } catch (error) {

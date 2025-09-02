@@ -18,31 +18,70 @@ The Wallet Balance Service fetches wallet balance data from Hermes metrics endpo
 
 ## API Endpoints
 
-### Get Formatted Wallet Balances
+### Get Live Chains from Metrics
 ```
-GET /api/wallets/balances/formatted?chainId=osmosis-1
+GET /api/wallets/balances/live-chains
 ```
+Returns only chains that have active wallet balances in the metrics endpoint.
 
 Response:
 ```json
 {
   "success": true,
-  "balances": [
+  "chains": [
     {
-      "account": "osmo16zv6xqknkcfk4ecgjh5d3nyu2l5t0adzc34wx0",
-      "chain": "osmosis-1",
+      "chainId": "atomone-1",
+      "chainName": "atomone-1", 
+      "walletCount": 1
+    },
+    {
+      "chainId": "osmosis-1",
       "chainName": "osmosis-1",
-      "denom": "uosmo",
-      "symbol": "uosmo",
-      "tokenName": "uosmo",
-      "rawBalance": "43302538",
-      "balance": 43.302538,
-      "decimals": 6
+      "walletCount": 1
     }
   ],
+  "totalChains": 5,
   "timestamp": "2025-01-15T10:30:00.000Z"
 }
 ```
+
+### Get Formatted Wallet Balances (Live Data Only)
+```
+GET /api/wallets/balances/formatted?chainId=osmosis-1
+```
+
+Response shows only chains present in metrics endpoint:
+```json
+{
+  "success": true,
+  "chains": [
+    {
+      "chain": "atomone-1",
+      "chainName": "atomone-1",
+      "wallets": [
+        {
+          "address": "atone16zv6xqknkcfk4ecgjh5d3nyu2l5t0adz726ex9",
+          "denom": "uphoton",
+          "symbol": "PHOTON",
+          "rawBalance": "12261010",
+          "balance": 12.26101,
+          "decimals": 6,
+          "timestamp": "2025-01-15T10:30:00.000Z"
+        }
+      ]
+    }
+  ],
+  "totalChains": 5,
+  "totalWallets": 5,
+  "timestamp": "2025-01-15T10:30:00.000Z"
+}
+```
+
+### Cleanup Old Data (Admin Only)
+```
+POST /api/wallets/balances/cleanup
+```
+Removes wallet addresses and balances for chains not present in the metrics endpoint.
 
 ### Health Check
 ```
