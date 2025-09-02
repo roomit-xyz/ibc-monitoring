@@ -110,8 +110,10 @@ class WalletBalanceService {
       } catch (error) {
         retryCount++;
         this.errorCount++;
+        this.lastFailureTime = Date.now();
         
         logger.error(`Error collecting wallet balances (attempt ${retryCount}/${this.maxRetries + 1}):`, error.message);
+        logger.debug('Error details:', error);
         
         if (retryCount <= this.maxRetries) {
           const backoffTime = Math.min(
@@ -316,6 +318,11 @@ class WalletBalanceService {
 
   async getDecimalsFromDatabase(chainId, denom) {
     try {
+      if (!this.db || !this.db.get) {
+        logger.debug('Database not available for decimals lookup');
+        return null;
+      }
+
       const result = await this.db.get(`
         SELECT decimals FROM token_decimals 
         WHERE chain_id = ? AND denom = ?
@@ -323,7 +330,7 @@ class WalletBalanceService {
       
       return result ? result.decimals : null;
     } catch (error) {
-      logger.debug('Error getting decimals from database:', error.message);
+      logger.debug('Error getting decimals from database (table may not exist yet):', error.message);
       return null;
     }
   }
@@ -362,6 +369,11 @@ class WalletBalanceService {
 
   async saveDecimalsToDatabase(chainId, denom, decimals) {
     try {
+      if (!this.db || !this.db.run) {
+        logger.debug('Database not available for saving decimals');
+        return;
+      }
+
       // Create table if it doesn't exist
       await this.db.run(`
         CREATE TABLE IF NOT EXISTS token_decimals (
@@ -383,7 +395,7 @@ class WalletBalanceService {
 
       logger.debug(`Saved decimals to database: ${chainId}/${denom} = ${decimals}`);
     } catch (error) {
-      logger.error('Error saving decimals to database:', error);
+      logger.debug('Error saving decimals to database (skipping):', error.message);
     }
   }
 
@@ -428,39 +440,60 @@ class WalletBalanceService {
 
   async updateBalancesInDatabase(processedBalances) {
     try {
+      if (!this.db) {
+        logger.debug('Database not available, skipping balance updates');
+        return;
+      }
+
       for (const balance of processedBalances) {
-        // Find or create wallet address
-        let walletId = await this.findWalletByAddress(balance.account, balance.chain);
-        
-        if (!walletId) {
-          // Create new wallet entry
-          walletId = await this.db.createWalletAddress({
-            chainId: balance.chain,
-            chainName: balance.chainName,
-            address: balance.account,
-            addressType: 'relayer'
-          });
+        try {
+          // Find or create wallet address
+          let walletId = await this.findWalletByAddress(balance.account, balance.chain);
           
-          logger.info(`Created new wallet entry for ${balance.account} on ${balance.chainName}`);
+          if (!walletId) {
+            // Try to create new wallet entry if the method exists
+            if (this.db.createWalletAddress) {
+              walletId = await this.db.createWalletAddress({
+                chainId: balance.chain,
+                chainName: balance.chainName,
+                address: balance.account,
+                addressType: 'relayer'
+              });
+              
+              logger.info(`Created new wallet entry for ${balance.account} on ${balance.chainName}`);
+            } else {
+              logger.debug('createWalletAddress method not available, skipping wallet creation');
+              continue;
+            }
+          }
+
+          // Update balance if the method exists
+          if (this.db.updateWalletBalance) {
+            await this.db.updateWalletBalance(
+              walletId,
+              balance.denom,
+              balance.balance,
+              null // block height not available from metrics
+            );
+          } else {
+            logger.debug('updateWalletBalance method not available, skipping balance update');
+          }
+        } catch (balanceError) {
+          logger.debug(`Error processing balance for ${balance.account}:`, balanceError.message);
+          continue;
         }
-
-        // Update balance
-        await this.db.updateWalletBalance(
-          walletId,
-          balance.denom,
-          balance.balance,
-          null // block height not available from metrics
-        );
-
-        // Token info removed - focusing on balances only
       }
     } catch (error) {
-      logger.error('Error updating balances in database:', error);
+      logger.debug('Error updating balances in database (continuing without DB updates):', error.message);
     }
   }
 
   async findWalletByAddress(address, chainId) {
     try {
+      if (!this.db || !this.db.get) {
+        return null;
+      }
+
       const result = await this.db.get(`
         SELECT id FROM wallet_addresses 
         WHERE address = ? AND chain_id = ?
@@ -468,7 +501,7 @@ class WalletBalanceService {
       
       return result?.id || null;
     } catch (error) {
-      logger.error('Error finding wallet by address:', error);
+      logger.debug('Error finding wallet by address (table may not exist):', error.message);
       return null;
     }
   }
@@ -553,10 +586,18 @@ class WalletBalanceService {
 
       const balances = await this.collectAndProcessBalances();
       
-      if (chainFilter) {
-        return balances.filter(b => b.chain === chainFilter);
+      if (!balances || balances.length === 0) {
+        logger.warn('No balances returned from collection process');
+        return [];
       }
       
+      if (chainFilter) {
+        const filtered = balances.filter(b => b.chain === chainFilter);
+        logger.debug(`Filtered balances: ${filtered.length} of ${balances.length} for chain ${chainFilter}`);
+        return filtered;
+      }
+      
+      logger.debug(`Returning ${balances.length} total balances`);
       return balances;
     } catch (error) {
       logger.error('Error getting formatted balances:', error);

@@ -13,6 +13,7 @@ function setupWebSocket(server, db) {
         const token = url.searchParams.get('token') || info.req.headers.authorization?.replace('Bearer ', '');
         
         if (!token) {
+          logger.debug('WebSocket connection rejected: No authentication token provided');
           return false;
         }
 
@@ -21,6 +22,7 @@ function setupWebSocket(server, db) {
         const user = await db.getUserById(decoded.userId);
         
         if (!user) {
+          logger.debug('WebSocket connection rejected: User not found');
           return false;
         }
 
@@ -28,7 +30,7 @@ function setupWebSocket(server, db) {
         info.req.user = user;
         return true;
       } catch (error) {
-        logger.warn('WebSocket authentication failed:', error.message);
+        logger.debug('WebSocket authentication failed:', error.message);
         return false;
       }
     }
@@ -42,7 +44,7 @@ function setupWebSocket(server, db) {
     
     // Check if user is properly authenticated
     if (!user) {
-      logger.warn('WebSocket connection attempted without proper authentication');
+      logger.debug('WebSocket connection attempted without proper authentication (connection will be closed)');
       ws.close(1008, 'Authentication required');
       return;
     }
