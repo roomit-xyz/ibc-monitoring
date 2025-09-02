@@ -326,15 +326,20 @@ const determineUserRoleFromGroups = (client, userDN, userAttributes) => {
         return resolve('monitoring');
       }
 
-      // Search for group membership manually (fallback for lldap)
+      // Search for group membership manually (required for lldap)
+      logger.info(`Searching group membership for user: ${username} in ${allGroups.length} groups`);
+      
       allGroups.forEach((groupDN) => {
         const trimmedGroupDN = groupDN.trim();
+        logger.debug(`Checking group: ${trimmedGroupDN} for user: ${userDN}`);
+        
         // Try different search filters for lldap compatibility
+        const groupName = trimmedGroupDN.split(',')[0].replace('cn=', '');
         const searchFilters = [
-          `(&(objectClass=groupOfNames)(member=${userDN}))`,
-          `(&(objectClass=groupOfUniqueNames)(uniqueMember=${userDN}))`,
-          `(&(objectClass=group)(member=${userDN}))`,
-          `(&(cn=${trimmedGroupDN.split(',')[0].replace('cn=', '')})(member=${userDN}))`
+          `(&(objectClass=groupOfNames)(cn=${groupName})(member=${userDN}))`,
+          `(&(objectClass=groupOfUniqueNames)(cn=${groupName})(uniqueMember=${userDN}))`,
+          `(&(objectClass=group)(cn=${groupName})(member=${userDN}))`,
+          `(&(cn=${groupName})(|(member=${userDN})(uniqueMember=${userDN})))`
         ];
 
         let filterIndex = 0;
@@ -358,7 +363,9 @@ const determineUserRoleFromGroups = (client, userDN, userAttributes) => {
 
           logger.debug(`Searching for group membership with filter: ${groupSearchFilter}`);
 
-          client.search(trimmedGroupDN, groupSearchOptions, (searchErr, searchRes) => {
+          // Search in the groups base instead of specific group DN
+          const groupsBase = 'ou=groups,dc=roomit,dc=xyz';
+          client.search(groupsBase, groupSearchOptions, (searchErr, searchRes) => {
             if (searchErr) {
               logger.debug(`LDAP group search attempt ${filterIndex + 1} failed for ${trimmedGroupDN}:`, searchErr.message);
               filterIndex++;
