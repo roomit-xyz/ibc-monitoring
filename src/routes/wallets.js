@@ -76,23 +76,26 @@ router.post('/addresses', requireRole('admin'), async (req, res) => {
 // Get live chains from metrics (only chains with active wallet balances)
 router.get('/balances/live-chains', async (req, res) => {
   try {
-    const walletBalanceService = req.app.get('walletBalanceService');
-    if (!walletBalanceService) {
-      return res.status(503).json({ error: 'Wallet balance service not available' });
-    }
-
-    // Get fresh data from metrics
-    const balances = await walletBalanceService.collectAndProcessBalances();
+    // Get chains from database instead of live metrics
+    const walletBalances = await db.getWalletBalances();
     
-    // Get unique chains from metrics
-    const liveChains = [...new Set(balances.map(b => b.chain))].map(chainId => {
-      const chainData = balances.find(b => b.chain === chainId);
-      return {
-        chainId: chainData.chain,
-        chainName: chainData.chainName,
-        walletCount: balances.filter(b => b.chain === chainId).length
-      };
+    // Get unique chains from database
+    const chainMap = {};
+    walletBalances.forEach(wb => {
+      if (wb.balance && parseFloat(wb.balance) > 0) { // Only chains with balances
+        if (!chainMap[wb.chain_id]) {
+          chainMap[wb.chain_id] = {
+            chainId: wb.chain_id,
+            chainName: wb.chain_name,
+            walletCount: 0
+          };
+        }
+        chainMap[wb.chain_id].walletCount++;
+      }
     });
+    
+    const liveChains = Object.values(chainMap);
+    logger.debug(`API /live-chains returning ${liveChains.length} chains from database`);
 
     res.json({
       success: true,
@@ -187,19 +190,39 @@ router.get('/balances/formatted', async (req, res) => {
   try {
     const { chainId } = req.query;
     
-    // Use the wallet balance service to get formatted balances
-    const walletBalanceService = req.app.get('walletBalanceService');
-    if (!walletBalanceService) {
-      return res.status(503).json({ error: 'Wallet balance service not available' });
-    }
-
-    // Get fresh data from metrics endpoint
-    const formattedBalances = await walletBalanceService.collectAndProcessBalances();
+    // Get wallet balances from database instead of live metrics
+    const walletBalances = await db.getWalletBalances(chainId);
+    logger.debug(`API /balances/formatted got ${walletBalances.length} wallet balances from database`);
     
-    // Filter by chainId if provided
-    const filteredBalances = chainId 
-      ? formattedBalances.filter(b => b.chain === chainId)
-      : formattedBalances;
+    if (walletBalances.length === 0) {
+      logger.debug('No wallet balances found in database');
+      return res.json({
+        success: true,
+        totalChains: 0,
+        totalWallets: 0,
+        chains: []
+      });
+    }
+    
+    // Transform database results to expected format
+    const formattedBalances = walletBalances.map(wb => ({
+      account: wb.address,
+      chain: wb.chain_id,
+      chainName: wb.chain_name,
+      denom: wb.denom,
+      symbol: wb.denom.replace('u', '').toUpperCase(),
+      rawBalance: wb.raw_balance || (wb.balance * Math.pow(10, 6)).toString(), // Estimate raw from formatted
+      balance: parseFloat(wb.balance),
+      decimals: 6, // Default decimals
+      timestamp: wb.updated_at || new Date().toISOString()
+    }));
+    
+    logger.debug(`Formatted ${formattedBalances.length} balances from database`);
+    if (formattedBalances.length > 0) {
+      logger.debug('Sample formatted balance:', JSON.stringify(formattedBalances[0], null, 2));
+    }
+    
+    const filteredBalances = formattedBalances;
 
     // Group by chain for better display
     const groupedBalances = filteredBalances.reduce((acc, balance) => {
