@@ -567,16 +567,16 @@ class IBCDashboard {
                     const balancesData = await balancesResponse.json();
                     this.detailedBalances = balancesData.chains;
                     
-                    // Transform data for wallet display
+                    // Transform data for wallet display using live chains data (has correct counts)
                     this.walletData = {
-                        total_chains: balancesData.totalChains,
+                        total_chains: chainsData.totalChains,
                         total_wallets: balancesData.totalWallets,
                         total_usd_value: 0, // No USD values anymore
-                        chains: balancesData.chains.map(chain => ({
-                            chain_id: chain.chain,
+                        chains: this.liveChains.map(chain => ({
+                            chain_id: chain.chainId,
                             chain_name: chain.chainName,
-                            wallet_count: chain.wallets.length,
-                            token_count: chain.wallets.reduce((total, wallet) => total + 1, 0), // Count unique tokens
+                            wallet_count: chain.walletCount,
+                            token_count: chain.tokenCount || 0, // From API live-chains
                             total_usd_value: 0 // No USD values
                         }))
                     };
@@ -645,6 +645,10 @@ class IBCDashboard {
                 <div class="flex justify-between items-center">
                     <span class="text-sm text-gray-600">Wallets:</span>
                     <span class="text-sm font-medium text-blue-600">${chain.wallet_count}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600">Tokens:</span>
+                    <span class="text-sm font-medium text-green-600">${chain.token_count || 0}</span>
                 </div>
                 <div class="flex justify-between items-center">
                     <span class="text-sm text-gray-600">Status:</span>

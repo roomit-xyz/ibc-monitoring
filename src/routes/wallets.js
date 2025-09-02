@@ -87,18 +87,22 @@ router.get('/balances/live-chains', async (req, res) => {
           chainMap[wb.chain_id] = {
             chainId: wb.chain_id,
             chainName: wb.chain_name,
-            walletAddresses: new Set() // Track unique wallet addresses
+            walletAddresses: new Set(), // Track unique wallet addresses
+            tokenDenoms: new Set() // Track unique token denominations
           };
         }
-        // Add wallet address to set (automatically handles uniqueness)
+        // Add wallet address and token denom to sets (automatically handles uniqueness)
         chainMap[wb.chain_id].walletAddresses.add(wb.address);
+        chainMap[wb.chain_id].tokenDenoms.add(wb.denom);
       }
     });
     
     // Convert sets to counts
     Object.keys(chainMap).forEach(chainId => {
       chainMap[chainId].walletCount = chainMap[chainId].walletAddresses.size;
-      delete chainMap[chainId].walletAddresses; // Clean up the set
+      chainMap[chainId].tokenCount = chainMap[chainId].tokenDenoms.size;
+      delete chainMap[chainId].walletAddresses; // Clean up the sets
+      delete chainMap[chainId].tokenDenoms;
     });
     
     const liveChains = Object.values(chainMap);
