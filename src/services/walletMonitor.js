@@ -45,8 +45,12 @@ class WalletMonitor {
 
   async collectAllBalances() {
     try {
+      // First, try to get wallet data from metrics endpoint
+      await this.collectFromMetricsEndpoint();
+      
+      // Fallback to direct API calls if needed
       const wallets = await this.db.getWalletAddresses();
-      logger.debug(`Monitoring ${wallets.length} wallet addresses`);
+      logger.debug(`Monitoring ${wallets.length} registered wallet addresses`);
 
       for (const wallet of wallets) {
         try {
