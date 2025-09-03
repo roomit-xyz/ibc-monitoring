@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Login - IBC Monitor</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background: #007cba; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #005a8b; }
+        .debug { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>Debug Login Form</h1>
+    <p>This form tests direct POST submission without JavaScript fetch.</p>
+    
+    <form id="debugForm" method="POST" action="/api/auth/login">
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="rememberMe" value="true"> Remember me
+            </label>
+        </div>
+        
+        <button type="submit">Login (Direct POST)</button>
+    </form>
+    
+    <hr>
+    
+    <h2>Fetch API Test</h2>
+    <button onclick="testFetch()">Test Fetch API Login</button>
+    
+    <div id="debugOutput" class="debug" style="display: none;">
+        <h3>Debug Output:</h3>
+        <pre id="debugText"></pre>
+    </div>
+
+    <script>
+        async function testFetch() {
+            const debugOutput = document.getElementById('debugOutput');
+            const debugText = document.getElementById('debugText');
+            
+            debugOutput.style.display = 'block';
+            debugText.textContent = 'Testing fetch request...\n';
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value || 'test',
+                        password: document.getElementById('password').value || 'test',
+                        rememberMe: false
+                    })
+                });
+                
+                debugText.textContent += `Response status: ${response.status}\n`;
+                debugText.textContent += `Response headers: ${JSON.stringify([...response.headers.entries()], null, 2)}\n`;
+                
+                const data = await response.text();
+                debugText.textContent += `Response body: ${data}\n`;
+                
+            } catch (error) {
+                debugText.textContent += `Error: ${error.message}\n`;
+                console.error('Fetch error:', error);
+            }
+        }
+        
+        // Log all form submissions
+        document.getElementById('debugForm').addEventListener('submit', function(e) {
+            console.log('Form submitted with method:', this.method);
+            console.log('Form action:', this.action);
+            console.log('Form data:', new FormData(this));
+        });
+    </script>
+</body>
+</html>
