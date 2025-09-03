@@ -56,8 +56,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: ["'self'", "ws:", "wss:"],
       fontSrc: ["'self'"],
@@ -117,6 +117,13 @@ app.use(session({
 app.use('/static', express.static(path.join(__dirname, 'public')));
 app.use('/img', express.static(path.join(__dirname, 'public/img')));
 app.use('/js', express.static(path.join(__dirname, 'public/js')));
+app.use('/css', express.static(path.join(__dirname, 'public/css'), {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css');
+    }
+  }
+}));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
