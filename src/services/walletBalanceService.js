@@ -473,8 +473,13 @@ class WalletBalanceService {
         return cachedDecimals;
       }
 
-      // If not in database, fetch from cosmos.directory and cache
-      let decimals = await this.fetchDecimalsFromDirectory(chainId, denom);
+      // Try to fetch from chain API endpoint first
+      let decimals = await this.fetchDecimalsFromChainAPI(chainId, denom);
+      
+      // If chain API fails, fallback to cosmos.directory
+      if (decimals === null) {
+        decimals = await this.fetchDecimalsFromDirectory(chainId, denom);
+      }
       
       // Save to database for future use
       await this.saveDecimalsToDatabase(chainId, denom, decimals);
@@ -504,6 +509,172 @@ class WalletBalanceService {
       logger.debug('Error getting decimals from database:', error.message);
       return null;
     }
+  }
+
+  async fetchDecimalsFromChainAPI(chainId, denom) {
+    try {
+      // Get chain API endpoint from environment variables
+      const envKey = `${chainId.toUpperCase().replace(/-/g, '_')}_REST_ENDPOINT`;
+      const chainEndpoint = process.env[envKey];
+      
+      if (!chainEndpoint) {
+        logger.debug(`No chain API endpoint configured for ${chainId} (${envKey})`);
+        return null;
+      }
+
+      // Multiple strategies to fetch decimals from different chain API formats
+      const strategies = [
+        // Strategy 1: Single denom metadata endpoint
+        async () => {
+          const response = await axios.get(`${chainEndpoint}/cosmos/bank/v1beta1/denom_metadata/${denom}`, {
+            timeout: 5000,
+            headers: { 'User-Agent': 'IBC-Monitor/1.0' }
+          });
+          
+          if (response.data?.metadata?.denom_units) {
+            return this.parseMetadataDecimals(response.data.metadata, denom);
+          }
+          return null;
+        },
+
+        // Strategy 2: All denoms metadata endpoint (find specific denom)
+        async () => {
+          const response = await axios.get(`${chainEndpoint}/cosmos/bank/v1beta1/denoms_metadata`, {
+            timeout: 8000,
+            headers: { 'User-Agent': 'IBC-Monitor/1.0' }
+          });
+          
+          if (response.data?.metadatas) {
+            const metadata = response.data.metadatas.find(meta => 
+              meta.base === denom || 
+              meta.denom_units?.some(unit => unit.denom === denom)
+            );
+            
+            if (metadata) {
+              return this.parseMetadataDecimals(metadata, denom);
+            }
+          }
+          return null;
+        },
+
+        // Strategy 3: Supply endpoint (check if token exists, use chain-specific defaults)
+        async () => {
+          const response = await axios.get(`${chainEndpoint}/cosmos/bank/v1beta1/supply/${denom}`, {
+            timeout: 5000,
+            headers: { 'User-Agent': 'IBC-Monitor/1.0' }
+          });
+          
+          // Some chains include decimals info in supply response
+          if (response.data?.amount?.denom === denom && response.data?.decimals) {
+            logger.debug(`Found decimals in supply endpoint for ${chainId}/${denom}: ${response.data.decimals}`);
+            return response.data.decimals;
+          }
+          
+          // If token exists in supply but no decimals, check if it's a native token
+          if (response.data?.amount?.denom === denom) {
+            const nativeDecimals = this.getNativeTokenDecimals(chainId, denom);
+            if (nativeDecimals !== null) {
+              logger.debug(`Using native token decimals for ${chainId}/${denom}: ${nativeDecimals}`);
+              return nativeDecimals;
+            }
+          }
+          
+          return null;
+        }
+      ];
+
+      // Try each strategy until one succeeds
+      for (let i = 0; i < strategies.length; i++) {
+        try {
+          const result = await strategies[i]();
+          if (result !== null) {
+            logger.debug(`Fetched decimals from chain API strategy ${i + 1} for ${chainId}/${denom}: ${result}`);
+            return result;
+          }
+        } catch (strategyError) {
+          logger.debug(`Chain API strategy ${i + 1} failed for ${chainId}/${denom}:`, strategyError.message);
+          continue;
+        }
+      }
+
+      logger.debug(`No metadata found in chain API for ${chainId}/${denom} after trying all strategies`);
+      return null;
+
+    } catch (error) {
+      logger.debug(`Failed to fetch decimals from chain API for ${chainId}/${denom}:`, error.message);
+      return null;
+    }
+  }
+
+  parseMetadataDecimals(metadata, denom) {
+    if (!metadata?.denom_units) {
+      return null;
+    }
+
+    // Strategy 1: Look for display unit with exponent
+    if (metadata.display) {
+      const displayUnit = metadata.denom_units.find(unit => unit.denom === metadata.display);
+      if (displayUnit && displayUnit.exponent !== undefined) {
+        return displayUnit.exponent;
+      }
+    }
+
+    // Strategy 2: Find unit with highest exponent for the denom
+    const matchingUnits = metadata.denom_units.filter(unit => 
+      unit.denom === denom || 
+      unit.denom === metadata.base ||
+      unit.aliases?.includes(denom)
+    );
+
+    if (matchingUnits.length > 0) {
+      // Get the unit with highest exponent (usually the display unit)
+      const maxExponentUnit = matchingUnits.reduce((max, unit) => 
+        (unit.exponent || 0) > (max.exponent || 0) ? unit : max
+      );
+      
+      if (maxExponentUnit.exponent !== undefined) {
+        return maxExponentUnit.exponent;
+      }
+    }
+
+    // Strategy 3: Look for any unit with non-zero exponent
+    const nonZeroExponentUnits = metadata.denom_units.filter(unit => 
+      unit.exponent && unit.exponent > 0
+    );
+
+    if (nonZeroExponentUnits.length === 1) {
+      return nonZeroExponentUnits[0].exponent;
+    }
+
+    return null;
+  }
+
+  getNativeTokenDecimals(chainId, denom) {
+    // Known native tokens for specific chains
+    const nativeTokens = {
+      // Cosmos SDK chains typically use 6 decimals for native tokens
+      'cosmoshub-4': { 'uatom': 6 },
+      'osmosis-1': { 'uosmo': 6 },
+      'juno-1': { 'ujuno': 6 },
+      'stargaze-1': { 'ustars': 6 },
+      'akashnet-2': { 'uakt': 6 },
+      'atomone-1': { 'uatone': 6, 'uphoton': 6 },
+      'gitopia': { 'ulore': 6 },
+      
+      // EVM-based chains typically use 18 decimals for native tokens
+      'planq_7070-2': { 'aplanq': 18 },
+      'evmos_9001-2': { 'aevmos': 18 },
+      'injective-1': { 'inj': 18 },
+      'canto_7700-1': { 'acanto': 18 },
+      'vota-ash': { 'peaka': 18 }
+    };
+
+    const chainTokens = nativeTokens[chainId];
+    if (chainTokens && chainTokens[denom] !== undefined) {
+      return chainTokens[denom];
+    }
+
+    return null;
   }
 
   async fetchDecimalsFromDirectory(chainId, denom) {
@@ -571,34 +742,21 @@ class WalletBalanceService {
   }
 
   getFallbackDecimals(denom) {
-    const fallbackDecimals = {
-      // Your specific tokens
-      'uphoton': 6,   // atomone-1
-      'peaka': 18,    // vota-ash
-      'ulore': 6,     // gitopia
-      'uosmo': 6,     // osmosis-1
-      'aplanq': 18,   // planq_7070-2
-      
-      // Common Cosmos tokens
-      'uatom': 6,
-      'ujuno': 6,
-      'ustars': 6,
-      'uakt': 6,
-      'uluna': 6,
-      'uusd': 6,
-      'ukrw': 6,
-      'uion': 6,
-      'ustrd': 6,
-      'uhuahua': 6,
-      'ucmdx': 6
-    };
-
-    // Default to 6 decimals for most Cosmos tokens, 18 for EVM-based chains
-    if (denom.startsWith('a') && !denom.startsWith('au')) {
-      return fallbackDecimals[denom] || 18;
+    // Use smart defaults based on token naming conventions
+    // No more hardcoded chain-specific values
+    
+    // EVM-based tokens (typically start with 'a' but not 'au', or contain planq/evmos patterns)
+    if ((denom.startsWith('a') && !denom.startsWith('au')) || 
+        denom.includes('planq') || 
+        denom.includes('evmos') ||
+        denom.includes('injective') ||
+        denom.includes('canto')) {
+      return 18;
     }
     
-    return fallbackDecimals[denom] || 6;
+    // Most Cosmos SDK native tokens use 6 decimals
+    // This covers tokens like: uatom, uosmo, ujuno, ustars, etc.
+    return 6;
   }
 
   // Removed token info fetching - focusing on balances only
